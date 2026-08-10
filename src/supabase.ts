@@ -107,3 +107,74 @@ export async function getAllClients(token: string) {
 export async function getWeightProgress(token: string, clientId: string) {
   return await request(`/rest/v1/weight_progress?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=recorded_at.asc`, { method: 'GET' }, token)
 }
+
+
+export async function updateClientProfile(token: string, clientId: string, profile: Record<string, any>) {
+  const rows = await request(`/rest/v1/clients?id=eq.${encodeURIComponent(clientId)}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify(profile),
+  }, token)
+  return rows?.[0] ?? null
+}
+
+export async function getClientWorkouts(token: string, clientId: string) {
+  return await request(`/rest/v1/workout_plans?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.asc`, {method:'GET'}, token)
+}
+export async function getWorkoutExercises(token: string, workoutId: number) {
+  return await request(`/rest/v1/exercises?workout_id=eq.${workoutId}&select=*&order=exercise_order.asc,id.asc`, {method:'GET'}, token)
+}
+export async function createWorkout(token: string, data: any) {
+  const rows = await request('/rest/v1/workout_plans', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0] ?? null
+}
+export async function deleteWorkout(token: string, id: number) {
+  await request(`/rest/v1/workout_plans?id=eq.${id}`, {method:'DELETE'}, token)
+}
+export async function createExercise(token: string, data: any) {
+  const rows = await request('/rest/v1/exercises', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0] ?? null
+}
+export async function deleteExercise(token: string, id: number) {
+  await request(`/rest/v1/exercises?id=eq.${id}`, {method:'DELETE'}, token)
+}
+
+export async function getNutritionPlans(token: string, clientId: string) {
+  return await request(`/rest/v1/nutrition_plans?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.asc`, {method:'GET'}, token)
+}
+export async function getMeals(token: string, planId: number) {
+  return await request(`/rest/v1/meals?nutrition_plan_id=eq.${planId}&select=*&order=meal_order.asc,id.asc`, {method:'GET'}, token)
+}
+export async function createNutritionPlan(token: string, data: any) {
+  const rows = await request('/rest/v1/nutrition_plans', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0] ?? null
+}
+export async function deleteNutritionPlan(token: string, id: number) {
+  await request(`/rest/v1/nutrition_plans?id=eq.${id}`, {method:'DELETE'}, token)
+}
+export async function createMeal(token: string, data: any) {
+  const rows = await request('/rest/v1/meals', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0] ?? null
+}
+export async function deleteMeal(token: string, id: number) {
+  await request(`/rest/v1/meals?id=eq.${id}`, {method:'DELETE'}, token)
+}
+
+export async function addWeightProgress(token: string, data: any) {
+  const rows = await request('/rest/v1/weight_progress', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0] ?? null
+}
+export async function deleteWeightProgress(token: string, id: number) {
+  await request(`/rest/v1/weight_progress?id=eq.${id}`, {method:'DELETE'}, token)
+}
+
+export async function getCheckIns(token: string, clientId: string) {
+  return await request(`/rest/v1/check_ins?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.desc`, {method:'GET'}, token)
+}
+export async function createCheckIn(token: string, data: any) {
+  const rows = await request('/rest/v1/check_ins', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0] ?? null
+}
+export async function deleteCheckIn(token: string, id: number) {
+  await request(`/rest/v1/check_ins?id=eq.${id}`, {method:'DELETE'}, token)
+}

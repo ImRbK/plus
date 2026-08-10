@@ -12,7 +12,7 @@ import {
   P33_WeeklyPlanner, P34_BeforeAfter, P35_ActionPlan,
   P36_ThankYou, P37_QRCode,
 } from './ebook/pages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, signUp, createClientProfile, deleteClientProfile, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, signUp, createClientProfile, deleteClientProfile, updateClientProfile, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -103,6 +103,7 @@ function Dashboard({ session, admin, onLogout }: { session: Session, admin: bool
 
 function AdminView({clients, session, onClientsChange}:{clients:any[], session:Session, onClientsChange:(clients:any[])=>void}) {
   const [open, setOpen] = useState(false)
+  const [selectedClient, setSelectedClient] = useState<any>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -139,6 +140,15 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
     catch(e:any){ setError(e.message || 'Não foi possível eliminar o perfil.') }
   }
 
+  if (selectedClient) {
+    return <ClientManager
+      client={selectedClient}
+      session={session}
+      onBack={()=>setSelectedClient(null)}
+      onClientUpdated={(c)=>{ setSelectedClient(c); onClientsChange(clients.map(x=>x.id===c.id?c:x)) }}
+    />
+  }
+
   return <div style={{display:'grid',gap:18,marginTop:28}}>
     <div style={card}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,marginBottom:18,flexWrap:'wrap'}}>
@@ -148,10 +158,10 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
       {error && !open && <div style={{...errorStyle,marginBottom:14}}>{error}</div>}
       {clients.length===0?<p style={muted}>Ainda não existem perfis de cliente.</p>:<div style={{display:'grid',gap:8}}>{clients.map(c=><div key={c.id} style={{...row,flexWrap:'wrap',gap:12}}>
         <div><strong>{c.full_name}</strong><div style={small}>{c.email||'Sem email'}</div></div>
-        <div style={{display:'flex',alignItems:'center',gap:14,marginLeft:'auto'}}><div style={{textAlign:'right'}}><strong>{c.current_weight ?? '—'} kg</strong><div style={small}>objetivo {c.goal_weight ?? '—'} kg</div></div><button onClick={()=>remove(c)} style={dangerButton}>ELIMINAR</button></div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginLeft:'auto'}}><div style={{textAlign:'right'}}><strong>{c.current_weight ?? '—'} kg</strong><div style={small}>objetivo {c.goal_weight ?? '—'} kg</div></div><button onClick={()=>setSelectedClient(c)} style={ghostButton}>ABRIR</button><button onClick={()=>remove(c)} style={dangerButton}>ELIMINAR</button></div>
       </div>)}</div>}
     </div>
-    <div style={card}><div style={cardTitle}>PRÓXIMAS FERRAMENTAS</div><div style={featureGrid}>{['Treinos personalizados','Planos alimentares','Check-ins semanais','Gráficos de progresso'].map(x=><div key={x} style={feature}>{x}<span>EM BREVE</span></div>)}</div></div>
+    <div style={card}><div style={cardTitle}>FERRAMENTAS DISPONÍVEIS</div><div style={featureGrid}>{['Treinos personalizados','Planos alimentares','Check-ins semanais','Peso e progresso'].map(x=><div key={x} style={feature}>{x}<span>ABRIR CLIENTE</span></div>)}</div></div>
 
     {open && <div style={modalBackdrop}>
       <div style={modal}>
@@ -173,6 +183,133 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
   </div>
 }
 
+
+function ClientManager({client, session, onBack, onClientUpdated}:{client:any,session:Session,onBack:()=>void,onClientUpdated:(c:any)=>void}) {
+  const [tab,setTab]=useState<'overview'|'workout'|'nutrition'|'checkin'>('overview')
+  const [weights,setWeights]=useState<any[]>([])
+  const [workouts,setWorkouts]=useState<any[]>([])
+  const [nutrition,setNutrition]=useState<any[]>([])
+  const [checkins,setCheckins]=useState<any[]>([])
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  const [profile,setProfile]=useState({full_name:client.full_name||'',email:client.email||'',initial_weight:client.initial_weight??'',current_weight:client.current_weight??'',height:client.height??'',goal_weight:client.goal_weight??'',goal:client.goal||'',start_date:client.start_date||''})
+  const load=async()=>{
+    setBusy(true)
+    try {
+      const [w,wo,n,ci]=await Promise.all([
+        getWeightProgress(session.access_token,client.id),
+        getClientWorkouts(session.access_token,client.id),
+        getNutritionPlans(session.access_token,client.id),
+        getCheckIns(session.access_token,client.id)
+      ])
+      setWeights(w); setWorkouts(wo); setNutrition(n); setCheckins(ci)
+    } catch(e:any){setMessage(e.message||'Erro ao carregar dados.')} finally{setBusy(false)}
+  }
+  useEffect(()=>{load()},[client.id])
+
+  const saveProfile=async(e:React.FormEvent)=>{
+    e.preventDefault(); setBusy(true); setMessage('')
+    try{
+      const updated=await updateClientProfile(session.access_token,client.id,{
+        full_name:profile.full_name.trim(), email:profile.email.trim(),
+        initial_weight:profile.initial_weight===''?null:Number(profile.initial_weight),
+        current_weight:profile.current_weight===''?null:Number(profile.current_weight),
+        height:profile.height===''?null:Number(profile.height),
+        goal_weight:profile.goal_weight===''?null:Number(profile.goal_weight),
+        goal:profile.goal.trim()||null,start_date:profile.start_date||null
+      })
+      setMessage('Perfil guardado.')
+      if(updated) onClientUpdated(updated)
+    }catch(e:any){setMessage(e.message||'Não foi possível guardar.')}finally{setBusy(false)}
+  }
+
+  return <div style={{display:'grid',gap:18,marginTop:28}}>
+    <div style={{display:'flex',alignItems:'center',gap:12}}>
+      <button onClick={onBack} style={ghostButton}>← CLIENTES</button>
+      <div><div style={eyebrow}>CLIENTE</div><h2 style={{...title,fontSize:36,margin:4}}>{client.full_name}</h2></div>
+    </div>
+    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+      {([['overview','PERFIL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-INS']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{...ghostButton,color:tab===k?GOLD:undefined,borderColor:tab===k?'rgba(212,175,55,.35)':undefined}}>{l}</button>)}
+    </div>
+    {message && <div style={message.startsWith('Erro')||message.includes('não')?<errorStyle:successStyle}>{message}</div>}
+    {busy && <div style={muted}>A carregar…</div>}
+    {tab==='overview' && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18}}>
+      <div style={card}><div style={cardTitle}>DADOS DO CLIENTE</div>
+        <form onSubmit={saveProfile} style={{display:'grid',gap:10}}>
+          <input value={profile.full_name} onChange={e=>setProfile({...profile,full_name:e.target.value})} placeholder="Nome" style={inputStyle}/>
+          <input value={profile.email} onChange={e=>setProfile({...profile,email:e.target.value})} placeholder="Email" type="email" style={inputStyle}/>
+          <div style={formGrid}><input value={profile.initial_weight} onChange={e=>setProfile({...profile,initial_weight:e.target.value})} placeholder="Peso inicial" type="number" step=".1" style={inputStyle}/><input value={profile.current_weight} onChange={e=>setProfile({...profile,current_weight:e.target.value})} placeholder="Peso atual" type="number" step=".1" style={inputStyle}/><input value={profile.height} onChange={e=>setProfile({...profile,height:e.target.value})} placeholder="Altura cm" type="number" style={inputStyle}/><input value={profile.goal_weight} onChange={e=>setProfile({...profile,goal_weight:e.target.value})} placeholder="Objetivo kg" type="number" step=".1" style={inputStyle}/></div>
+          <input value={profile.goal} onChange={e=>setProfile({...profile,goal:e.target.value})} placeholder="Objetivo" style={inputStyle}/>
+          <label style={labelStyle}>DATA DE INÍCIO<input value={profile.start_date} onChange={e=>setProfile({...profile,start_date:e.target.value})} type="date" style={{...inputStyle,width:'100%',marginTop:6}}/></label>
+          <button disabled={busy} style={goldButton}>GUARDAR PERFIL</button>
+        </form>
+      </div>
+      <div style={card}><div style={cardTitle}>PESO / PROGRESSO</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <div><div style={labelStyle}>INICIAL</div><div style={bigNumber}>{client.initial_weight??'—'}<small> kg</small></div></div>
+          <div><div style={labelStyle}>ATUAL</div><div style={bigNumber}>{client.current_weight??'—'}<small> kg</small></div></div>
+        </div>
+        <WeightManager client={client} session={session} weights={weights} onRefresh={load}/>
+      </div>
+    </div>}
+    {tab==='workout' && <WorkoutManager client={client} session={session} workouts={workouts} onRefresh={load}/>}
+    {tab==='nutrition' && <NutritionManager client={client} session={session} plans={nutrition} onRefresh={load}/>}
+    {tab==='checkin' && <CheckinManager client={client} session={session} checkins={checkins} onRefresh={load}/>}
+  </div>
+}
+
+function WeightManager({client,session,weights,onRefresh}:{client:any,session:Session,weights:any[],onRefresh:()=>void}) {
+  const [weight,setWeight]=useState(''),[date,setDate]=useState(new Date().toISOString().slice(0,10)),[saving,setSaving]=useState(false)
+  const add=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);try{await addWeightProgress(session.access_token,{client_id:client.id,weight:Number(weight),recorded_at:date});await updateClientProfile(session.access_token,client.id,{current_weight:Number(weight)});setWeight('');onRefresh()}finally{setSaving(false)}}
+  return <div style={{marginTop:24}}><div style={cardTitle}>REGISTAR PESO</div><form onSubmit={add} style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:8}}><input value={weight} onChange={e=>setWeight(e.target.value)} type="number" step=".1" placeholder="Peso kg" required style={inputStyle}/><input value={date} onChange={e=>setDate(e.target.value)} type="date" style={inputStyle}/><button disabled={saving} style={goldButton}>ADICIONAR</button></form><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}>{weights.map(w=><div key={w.id} style={weightPill}>{w.weight} kg <span>{w.recorded_at}</span><button onClick={async()=>{await deleteWeightProgress(session.access_token,w.id);onRefresh()}} style={{...ghostButton,padding:'2px 5px',marginLeft:5}}>×</button></div>)}</div></div>
+}
+
+function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:Session,workouts:any[],onRefresh:()=>void}) {
+  const [name,setName]=useState(''),[description,setDescription]=useState(''),[open,setOpen]=useState<number|null>(null),[ex,setEx]=useState<Record<number,any[]>>({})
+  const add=async(e:React.FormEvent)=>{e.preventDefault();await createWorkout(session.access_token,{client_id:client.id,name:name.trim(),description:description.trim()||null});setName('');setDescription('');onRefresh()}
+  const loadEx=async(id:number)=>{setOpen(id);setEx({...ex,[id]:await getWorkoutExercises(session.access_token,id)})}
+  return <div style={{display:'grid',gap:12}}>
+    <div style={card}><div style={cardTitle}>NOVO PLANO DE TREINO</div><form onSubmit={add} style={{display:'grid',gap:8}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nome (ex.: Treino A — Peito/Tríceps)" required style={inputStyle}/><input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Descrição" style={inputStyle}/><button style={goldButton}>CRIAR TREINO</button></form></div>
+    {workouts.length===0?<div style={card}><p style={muted}>Ainda não existem treinos.</p></div>:workouts.map(w=><div key={w.id} style={card}>
+      <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center'}}><div><div style={cardTitle}>{w.name}</div><p style={{...muted,margin:0}}>{w.description||'Sem descrição.'}</p></div><div style={{display:'flex',gap:8}}><button onClick={()=>loadEx(w.id)} style={ghostButton}>{open===w.id?'FECHAR':'EXERCÍCIOS'}</button><button onClick={async()=>{await deleteWorkout(session.access_token,w.id);onRefresh()}} style={dangerButton}>ELIMINAR</button></div></div>
+      {open===w.id && <ExerciseEditor session={session} workout={w} exercises={ex[w.id]||[]} onRefresh={()=>loadEx(w.id)}/>}
+    </div>)}
+  </div>
+}
+
+function ExerciseEditor({session,workout,exercises,onRefresh}:{session:Session,workout:any,exercises:any[],onRefresh:()=>void}) {
+  const [name,setName]=useState(''),[sets,setSets]=useState(''),[reps,setReps]=useState(''),[rest,setRest]=useState(''),[notes,setNotes]=useState('')
+  const add=async(e:React.FormEvent)=>{e.preventDefault();await createExercise(session.access_token,{workout_id:workout.id,name:name.trim(),sets:sets?Number(sets):null,reps:reps||null,rest_seconds:rest?Number(rest):null,notes:notes||null,exercise_order:exercises.length});setName('');setSets('');setReps('');setRest('');setNotes('');onRefresh()}
+  return <div style={{marginTop:20,paddingTop:18,borderTop:'1px solid rgba(255,255,255,.08)'}}><div style={cardTitle}>EXERCÍCIOS</div>
+    <div style={{display:'grid',gap:6,marginBottom:14}}>{exercises.map(x=><div key={x.id} style={row}><div><strong>{x.name}</strong><div style={small}>{x.sets??'—'} séries × {x.reps??'—'} reps {x.rest_seconds?` · ${x.rest_seconds}s descanso`:''}</div>{x.notes&&<div style={small}>{x.notes}</div>}</div><button onClick={async()=>{await deleteExercise(session.access_token,x.id);onRefresh()}} style={dangerButton}>×</button></div>)}</div>
+    <form onSubmit={add} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:8}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Exercício" required style={inputStyle}/><input value={sets} onChange={e=>setSets(e.target.value)} placeholder="Séries" type="number" style={inputStyle}/><input value={reps} onChange={e=>setReps(e.target.value)} placeholder="Reps" style={inputStyle}/><input value={rest} onChange={e=>setRest(e.target.value)} placeholder="Desc. s" type="number" style={inputStyle}/><input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notas técnicas" style={{...inputStyle,gridColumn:'1/-1'}}/><button style={{...goldButton,gridColumn:'1/-1'}}>ADICIONAR EXERCÍCIO</button></form>
+  </div>
+}
+
+function NutritionManager({client,session,plans,onRefresh}:{client:any,session:Session,plans:any[],onRefresh:()=>void}) {
+  const [name,setName]=useState(''),[cal,setCal]=useState(''),[protein,setProtein]=useState(''),[carbs,setCarbs]=useState(''),[fats,setFats]=useState(''),[open,setOpen]=useState<number|null>(null),[meals,setMeals]=useState<Record<number,any[]>>({})
+  const add=async(e:React.FormEvent)=>{e.preventDefault();await createNutritionPlan(session.access_token,{client_id:client.id,name:name.trim(),calories:cal?Number(cal):null,protein:protein?Number(protein):null,carbohydrates:carbs?Number(carbs):null,fats:fats?Number(fats):null});setName('');setCal('');setProtein('');setCarbs('');setFats('');onRefresh()}
+  const loadMeals=async(id:number)=>{setOpen(id);setMeals({...meals,[id]:await getMeals(session.access_token,id)})}
+  return <div style={{display:'grid',gap:12}}>
+    <div style={card}><div style={cardTitle}>NOVO PLANO ALIMENTAR</div><form onSubmit={add} style={{display:'grid',gap:8}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nome (ex.: Ganho de massa — 3000 kcal)" required style={inputStyle}/><div style={formGrid}><input value={cal} onChange={e=>setCal(e.target.value)} placeholder="Calorias" type="number" style={inputStyle}/><input value={protein} onChange={e=>setProtein(e.target.value)} placeholder="Proteína g" type="number" step=".1" style={inputStyle}/><input value={carbs} onChange={e=>setCarbs(e.target.value)} placeholder="Hidratos g" type="number" step=".1" style={inputStyle}/><input value={fats} onChange={e=>setFats(e.target.value)} placeholder="Gordura g" type="number" step=".1" style={inputStyle}/></div><button style={goldButton}>CRIAR PLANO</button></form></div>
+    {plans.map(p=><div key={p.id} style={card}><div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center'}}><div><div style={cardTitle}>{p.name}</div><div style={small}>{p.calories??'—'} kcal · P {p.protein??'—'}g · HC {p.carbohydrates??'—'}g · G {p.fats??'—'}g</div></div><div style={{display:'flex',gap:8}}><button onClick={()=>loadMeals(p.id)} style={ghostButton}>{open===p.id?'FECHAR':'REFEIÇÕES'}</button><button onClick={async()=>{await deleteNutritionPlan(session.access_token,p.id);onRefresh()}} style={dangerButton}>ELIMINAR</button></div></div>{open===p.id&&<MealEditor session={session} plan={p} meals={meals[p.id]||[]} onRefresh={()=>loadMeals(p.id)}/>}</div>)}
+  </div>
+}
+
+function MealEditor({session,plan,meals,onRefresh}:{session:Session,plan:any,meals:any[],onRefresh:()=>void}) {
+  const [name,setName]=useState(''),[cal,setCal]=useState(''),[protein,setProtein]=useState(''),[carbs,setCarbs]=useState(''),[fats,setFats]=useState(''),[ingredients,setIngredients]=useState(''),[preparation,setPreparation]=useState('')
+  const add=async(e:React.FormEvent)=>{e.preventDefault();await createMeal(session.access_token,{nutrition_plan_id:plan.id,name:name.trim(),calories:cal?Number(cal):null,protein:protein?Number(protein):null,carbohydrates:carbs?Number(carbs):null,fats:fats?Number(fats):null,ingredients:ingredients||null,preparation:preparation||null,meal_order:meals.length});setName('');setCal('');setProtein('');setCarbs('');setFats('');setIngredients('');setPreparation('');onRefresh()}
+  return <div style={{marginTop:20,paddingTop:18,borderTop:'1px solid rgba(255,255,255,.08)'}}><div style={cardTitle}>REFEIÇÕES</div>
+    {meals.map(m=><div key={m.id} style={row}><div><strong>{m.name}</strong><div style={small}>{m.calories??'—'} kcal · P {m.protein??'—'}g · HC {m.carbohydrates??'—'}g · G {m.fats??'—'}g</div>{m.ingredients&&<div style={small}>{m.ingredients}</div>}</div><button onClick={async()=>{await deleteMeal(session.access_token,m.id);onRefresh()}} style={dangerButton}>×</button></div>)}
+    <form onSubmit={add} style={{display:'grid',gap:8,marginTop:10}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Refeição (ex.: Pequeno-almoço)" required style={inputStyle}/><div style={formGrid}><input value={cal} onChange={e=>setCal(e.target.value)} placeholder="Kcal" type="number" style={inputStyle}/><input value={protein} onChange={e=>setProtein(e.target.value)} placeholder="Proteína" type="number" step=".1" style={inputStyle}/><input value={carbs} onChange={e=>setCarbs(e.target.value)} placeholder="Hidratos" type="number" step=".1" style={inputStyle}/><input value={fats} onChange={e=>setFats(e.target.value)} placeholder="Gordura" type="number" step=".1" style={inputStyle}/></div><input value={ingredients} onChange={e=>setIngredients(e.target.value)} placeholder="Alimentos / quantidades" style={inputStyle}/><input value={preparation} onChange={e=>setPreparation(e.target.value)} placeholder="Preparação" style={inputStyle}/><button style={goldButton}>ADICIONAR REFEIÇÃO</button></form>
+  </div>
+}
+
+function CheckinManager({client,session,checkins,onRefresh}:{client:any,session:Session,checkins:any[],onRefresh:()=>void}) {
+  const [weight,setWeight]=useState(''),[training,setTraining]=useState(''),[nutrition,setNutrition]=useState(''),[sleep,setSleep]=useState(''),[notes,setNotes]=useState('')
+  const add=async(e:React.FormEvent)=>{e.preventDefault();await createCheckIn(session.access_token,{client_id:client.id,weight:weight?Number(weight):null,training_rating:training?Number(training):null,nutrition_rating:nutrition?Number(nutrition):null,sleep_rating:sleep?Number(sleep):null,notes:notes||null});setWeight('');setTraining('');setNutrition('');setSleep('');setNotes('');onRefresh()}
+  return <div style={{display:'grid',gap:12}}><div style={card}><div style={cardTitle}>REGISTAR CHECK-IN</div><form onSubmit={add} style={{display:'grid',gap:8}}><div style={formGrid}><input value={weight} onChange={e=>setWeight(e.target.value)} placeholder="Peso kg" type="number" step=".1" style={inputStyle}/><input value={training} onChange={e=>setTraining(e.target.value)} placeholder="Treino 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={nutrition} onChange={e=>setNutrition(e.target.value)} placeholder="Nutrição 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={sleep} onChange={e=>setSleep(e.target.value)} placeholder="Sono 1-10" type="number" min="1" max="10" style={inputStyle}/></div><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observações / feedback" style={{...inputStyle,minHeight:100,resize:'vertical'}}/><button style={goldButton}>GUARDAR CHECK-IN</button></form></div>{checkins.length===0?<div style={card}><p style={muted}>Ainda não existem check-ins.</p></div>:<div style={card}><div style={cardTitle}>HISTÓRICO</div>{checkins.map(c=><div key={c.id} style={row}><div><strong>{c.created_at?.slice(0,10)}</strong><div style={small}>Peso {c.weight??'—'} kg · Treino {c.training_rating??'—'}/10 · Nutrição {c.nutrition_rating??'—'}/10 · Sono {c.sleep_rating??'—'}/10</div>{c.notes&&<div style={small}>{c.notes}</div>}</div><button onClick={async()=>{await deleteCheckIn(session.access_token,c.id);onRefresh()}} style={dangerButton}>×</button></div>)}</div>}</div>
+}
 function ClientView({client,weights}:{client:any,weights:any[]}) { return <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18,marginTop:28}}>{!client?<div style={{...card,gridColumn:'1/-1'}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>:<><div style={card}><div style={cardTitle}>OBJETIVO</div><div style={bigNumber}>{client.current_weight ?? client.initial_weight ?? '—'} <small>kg</small></div><p style={muted}>Objetivo: {client.goal_weight ?? '—'} kg</p></div><div style={card}><div style={cardTitle}>DADOS</div><p style={text}><b>Altura:</b> {client.height ?? '—'} cm</p><p style={text}><b>Objetivo:</b> {client.goal ?? '—'}</p><p style={text}><b>Início:</b> {client.start_date ?? '—'}</p></div><div style={{...card,gridColumn:'1/-1'}}><div style={cardTitle}>EVOLUÇÃO DO PESO</div>{weights.length<2?<p style={muted}>Ainda não há registos suficientes para mostrar a evolução. {weights.length===1?'Existe 1 registo.':''}</p>:<div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{weights.map(w=><div key={w.id} style={weightPill}>{w.weight} kg <span>{w.recorded_at}</span></div>)}</div>}</div></>}</div> }
 
 function Ebook() {
