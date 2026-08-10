@@ -229,7 +229,7 @@ function ClientManager({client, session, onBack, onClientUpdated}:{client:any,se
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
       {([['overview','PERFIL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-INS']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{...ghostButton,color:tab===k?GOLD:undefined,borderColor:tab===k?'rgba(212,175,55,.35)':undefined}}>{l}</button>)}
     </div>
-    {message && <div style={message.startsWith('Erro')||message.includes('não')?<errorStyle:successStyle}>{message}</div>}
+    {message && <div style={message.startsWith('Erro')||message.includes('não') ? errorStyle : successStyle}>{message}</div>}
     {busy && <div style={muted}>A carregar…</div>}
     {tab==='overview' && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18}}>
       <div style={card}><div style={cardTitle}>DADOS DO CLIENTE</div>
