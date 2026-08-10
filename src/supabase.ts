@@ -54,11 +54,32 @@ export async function signIn(email: string, password: string): Promise<Session> 
 }
 
 
-export async function signUp(email: string, password: string) {
-  const data = await request('/auth/v1/signup', {
+export async function createClientViaFunction(token: string, profile: {
+  email: string
+  password: string
+  full_name: string
+  initial_weight?: number | null
+  current_weight?: number | null
+  height?: number | null
+  goal_weight?: number | null
+  goal?: string | null
+  start_date?: string | null
+}) {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/create-client`, {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(profile),
   })
+  const text = await response.text()
+  let data: any = null
+  try { data = text ? JSON.parse(text) : null } catch { data = text }
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || 'Não foi possível criar o cliente.')
+  }
   return data
 }
 

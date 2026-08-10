@@ -12,7 +12,7 @@ import {
   P33_WeeklyPlanner, P34_BeforeAfter, P35_ActionPlan,
   P36_ThankYou, P37_QRCode,
 } from './ebook/pages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, signUp, createClientProfile, deleteClientProfile, updateClientProfile, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -116,16 +116,14 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
     e.preventDefault(); setError(''); setSuccess(''); setSaving(true)
     try {
       if(form.password.length < 6) throw new Error('A password do cliente deve ter pelo menos 6 caracteres.')
-      const auth = await signUp(form.email.trim(), form.password)
-      const userId = auth?.user?.id
-      if(!userId) throw new Error('A conta foi criada mas o Supabase não devolveu o ID do utilizador. Verifica a configuração de confirmação de email.')
-      await createClientProfile(session.access_token, {
-        id:userId, full_name:form.full_name.trim(), email:form.email.trim(),
+      const result = await createClientViaFunction(session.access_token, {
+        email:form.email.trim(), password:form.password, full_name:form.full_name.trim(),
         initial_weight:form.initial_weight?Number(form.initial_weight):null,
         current_weight:form.current_weight?Number(form.current_weight):null,
         height:form.height?Number(form.height):null, goal_weight:form.goal_weight?Number(form.goal_weight):null,
         goal:form.goal.trim()||null, start_date:form.start_date||null
       })
+      if(!result?.user_id) throw new Error('O Supabase não devolveu o ID do novo cliente.')
       const fresh=await getAllClients(session.access_token); onClientsChange(fresh)
       setSuccess('Cliente criado com sucesso.')
       reset()
