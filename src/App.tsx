@@ -147,8 +147,6 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
     />
   }
 
-  const messageStyle = message.startsWith('Erro') || message.includes('não') ? errorStyle : successStyle
-
   return <div style={{display:'grid',gap:18,marginTop:28}}>
     <div style={card}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,marginBottom:18,flexWrap:'wrap'}}>
