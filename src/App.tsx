@@ -147,6 +147,8 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
     />
   }
 
+  const messageStyle = message.startsWith('Erro') || message.includes('não') ? errorStyle : successStyle
+
   return <div style={{display:'grid',gap:18,marginTop:28}}>
     <div style={card}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,marginBottom:18,flexWrap:'wrap'}}>
@@ -221,6 +223,8 @@ function ClientManager({client, session, onBack, onClientUpdated}:{client:any,se
     }catch(e:any){setMessage(e.message||'Não foi possível guardar.')}finally{setBusy(false)}
   }
 
+  const messageStyle = message.startsWith('Erro') || message.includes('não') ? errorStyle : successStyle
+
   return <div style={{display:'grid',gap:18,marginTop:28}}>
     <div style={{display:'flex',alignItems:'center',gap:12}}>
       <button onClick={onBack} style={ghostButton}>← CLIENTES</button>
@@ -229,7 +233,7 @@ function ClientManager({client, session, onBack, onClientUpdated}:{client:any,se
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
       {([['overview','PERFIL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-INS']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{...ghostButton,color:tab===k?GOLD:undefined,borderColor:tab===k?'rgba(212,175,55,.35)':undefined}}>{l}</button>)}
     </div>
-    {message && <div style={message.startsWith('Erro')||message.includes('não') ? errorStyle : successStyle}>{message}</div>}
+    {message && <div style={message.startsWith('Erro') || message.includes('não') ? errorStyle : successStyle}>{message}</div>}
     {busy && <div style={muted}>A carregar…</div>}
     {tab==='overview' && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:18}}>
       <div style={card}><div style={cardTitle}>DADOS DO CLIENTE</div>
