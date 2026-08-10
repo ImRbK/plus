@@ -12,7 +12,7 @@ import {
   P33_WeeklyPlanner, P34_BeforeAfter, P35_ActionPlan,
   P36_ThankYou, P37_QRCode,
 } from './ebook/pages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, signUp, createClientProfile, deleteClientProfile, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -96,12 +96,82 @@ function Dashboard({ session, admin, onLogout }: { session: Session, admin: bool
       <div style={eyebrow}>{admin?'PAINEL DE ADMINISTRAÇÃO':'ÁREA DO CLIENTE'}</div>
       <h1 style={title}>{admin?'Gestão MASSA+':`Olá${client?.full_name ? `, ${client.full_name.split(' ')[0]}` : ''}.`}</h1>
       <p style={muted}>{admin?'Gerir clientes e preparar a próxima fase da plataforma.':'Aqui vais encontrar o teu plano, evolução e ferramentas personalizadas.'}</p>
-      {loading ? <div style={card}>A carregar…</div> : error ? <div style={errorStyle}>{error}</div> : admin ? <AdminView clients={clients}/> : <ClientView client={client} weights={weights}/>} 
+      {loading ? <div style={card}>A carregar…</div> : error ? <div style={errorStyle}>{error}</div> : admin ? <AdminView clients={clients} session={session} onClientsChange={setClients}/> : <ClientView client={client} weights={weights}/>} 
     </main>
   </div>
 }
 
-function AdminView({clients}:{clients:any[]}) { return <div style={{display:'grid',gap:18,marginTop:28}}><div style={card}><div style={cardTitle}>CLIENTES</div>{clients.length===0?<p style={muted}>Ainda não existem perfis de cliente. Na próxima fase vamos adicionar o fluxo para criares clientes diretamente daqui.</p>:<div style={{display:'grid',gap:8}}>{clients.map(c=><div key={c.id} style={row}><div><strong>{c.full_name}</strong><div style={small}>{c.email||'Sem email'}</div></div><div style={{textAlign:'right'}}><strong>{c.current_weight ?? '—'} kg</strong><div style={small}>objetivo {c.goal_weight ?? '—'} kg</div></div></div>)}</div>}</div><div style={card}><div style={cardTitle}>PRÓXIMAS FERRAMENTAS</div><div style={featureGrid}>{['Treinos personalizados','Planos alimentares','Check-ins semanais','Gráficos de progresso'].map(x=><div key={x} style={feature}>{x}<span>EM BREVE</span></div>)}</div></div></div> }
+function AdminView({clients, session, onClientsChange}:{clients:any[], session:Session, onClientsChange:(clients:any[])=>void}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [form, setForm] = useState({full_name:'', email:'', password:'', initial_weight:'', current_weight:'', height:'', goal_weight:'', goal:'', start_date:new Date().toISOString().slice(0,10)})
+
+  const update = (key:string, value:string) => setForm(f=>({...f,[key]:value}))
+  const reset = () => setForm({full_name:'', email:'', password:'', initial_weight:'', current_weight:'', height:'', goal_weight:'', goal:'', start_date:new Date().toISOString().slice(0,10)})
+
+  const create = async (e:React.FormEvent) => {
+    e.preventDefault(); setError(''); setSuccess(''); setSaving(true)
+    try {
+      if(form.password.length < 6) throw new Error('A password do cliente deve ter pelo menos 6 caracteres.')
+      const auth = await signUp(form.email.trim(), form.password)
+      const userId = auth?.user?.id
+      if(!userId) throw new Error('A conta foi criada mas o Supabase não devolveu o ID do utilizador. Verifica a configuração de confirmação de email.')
+      await createClientProfile(session.access_token, {
+        id:userId, full_name:form.full_name.trim(), email:form.email.trim(),
+        initial_weight:form.initial_weight?Number(form.initial_weight):null,
+        current_weight:form.current_weight?Number(form.current_weight):null,
+        height:form.height?Number(form.height):null, goal_weight:form.goal_weight?Number(form.goal_weight):null,
+        goal:form.goal.trim()||null, start_date:form.start_date||null
+      })
+      const fresh=await getAllClients(session.access_token); onClientsChange(fresh)
+      setSuccess('Cliente criado com sucesso.')
+      reset()
+      setTimeout(()=>{setOpen(false);setSuccess('')},900)
+    } catch(e:any) { setError(e.message || 'Não foi possível criar o cliente.') }
+    finally { setSaving(false) }
+  }
+
+  const remove = async (client:any) => {
+    if(!window.confirm(`Eliminar o perfil de ${client.full_name}? Esta ação remove os dados do perfil, mas não apaga automaticamente a conta de autenticação.`)) return
+    try { await deleteClientProfile(session.access_token, client.id); onClientsChange(await getAllClients(session.access_token)) }
+    catch(e:any){ setError(e.message || 'Não foi possível eliminar o perfil.') }
+  }
+
+  return <div style={{display:'grid',gap:18,marginTop:28}}>
+    <div style={card}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:16,marginBottom:18,flexWrap:'wrap'}}>
+        <div><div style={cardTitle}>CLIENTES</div><p style={{...muted,margin:0}}>Cria e gere os perfis dos teus clientes.</p></div>
+        <button onClick={()=>{setOpen(true);setError('');setSuccess('')}} style={goldButton}>+ ADICIONAR CLIENTE</button>
+      </div>
+      {error && !open && <div style={{...errorStyle,marginBottom:14}}>{error}</div>}
+      {clients.length===0?<p style={muted}>Ainda não existem perfis de cliente.</p>:<div style={{display:'grid',gap:8}}>{clients.map(c=><div key={c.id} style={{...row,flexWrap:'wrap',gap:12}}>
+        <div><strong>{c.full_name}</strong><div style={small}>{c.email||'Sem email'}</div></div>
+        <div style={{display:'flex',alignItems:'center',gap:14,marginLeft:'auto'}}><div style={{textAlign:'right'}}><strong>{c.current_weight ?? '—'} kg</strong><div style={small}>objetivo {c.goal_weight ?? '—'} kg</div></div><button onClick={()=>remove(c)} style={dangerButton}>ELIMINAR</button></div>
+      </div>)}</div>}
+    </div>
+    <div style={card}><div style={cardTitle}>PRÓXIMAS FERRAMENTAS</div><div style={featureGrid}>{['Treinos personalizados','Planos alimentares','Check-ins semanais','Gráficos de progresso'].map(x=><div key={x} style={feature}>{x}<span>EM BREVE</span></div>)}</div></div>
+
+    {open && <div style={modalBackdrop}>
+      <div style={modal}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:20}}><div><div style={cardTitle}>NOVO CLIENTE</div><h2 style={{...title,fontSize:32,marginTop:4}}>Criar perfil</h2></div><button onClick={()=>setOpen(false)} style={closeButton}>×</button></div>
+        <p style={muted}>Cria a conta de acesso e o perfil MASSA+ do cliente.</p>
+        <form onSubmit={create} style={{display:'grid',gap:10,marginTop:20}}>
+          <input value={form.full_name} onChange={e=>update('full_name',e.target.value)} placeholder="Nome completo" required style={inputStyle}/>
+          <input value={form.email} onChange={e=>update('email',e.target.value)} placeholder="Email" type="email" required style={inputStyle}/>
+          <input value={form.password} onChange={e=>update('password',e.target.value)} placeholder="Password inicial (mín. 6 caracteres)" type="password" required style={inputStyle}/>
+          <div style={formGrid}><input value={form.initial_weight} onChange={e=>update('initial_weight',e.target.value)} placeholder="Peso inicial (kg)" type="number" step="0.1" style={inputStyle}/><input value={form.current_weight} onChange={e=>update('current_weight',e.target.value)} placeholder="Peso atual (kg)" type="number" step="0.1" style={inputStyle}/><input value={form.height} onChange={e=>update('height',e.target.value)} placeholder="Altura (cm)" type="number" step="1" style={inputStyle}/><input value={form.goal_weight} onChange={e=>update('goal_weight',e.target.value)} placeholder="Peso objetivo (kg)" type="number" step="0.1" style={inputStyle}/></div>
+          <input value={form.goal} onChange={e=>update('goal',e.target.value)} placeholder="Objetivo (ex.: Ganho de massa muscular)" style={inputStyle}/>
+          <label style={labelStyle}>DATA DE INÍCIO<input value={form.start_date} onChange={e=>update('start_date',e.target.value)} type="date" style={{...inputStyle,marginTop:6,width:'100%'}}/></label>
+          {error && <div style={errorStyle}>{error}</div>}
+          {success && <div style={successStyle}>{success}</div>}
+          <button disabled={saving} style={{...goldButton,marginTop:6}}>{saving?'A CRIAR…':'CRIAR CLIENTE'}</button>
+        </form>
+      </div>
+    </div>}
+  </div>
+}
 
 function ClientView({client,weights}:{client:any,weights:any[]}) { return <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18,marginTop:28}}>{!client?<div style={{...card,gridColumn:'1/-1'}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>:<><div style={card}><div style={cardTitle}>OBJETIVO</div><div style={bigNumber}>{client.current_weight ?? client.initial_weight ?? '—'} <small>kg</small></div><p style={muted}>Objetivo: {client.goal_weight ?? '—'} kg</p></div><div style={card}><div style={cardTitle}>DADOS</div><p style={text}><b>Altura:</b> {client.height ?? '—'} cm</p><p style={text}><b>Objetivo:</b> {client.goal ?? '—'}</p><p style={text}><b>Início:</b> {client.start_date ?? '—'}</p></div><div style={{...card,gridColumn:'1/-1'}}><div style={cardTitle}>EVOLUÇÃO DO PESO</div>{weights.length<2?<p style={muted}>Ainda não há registos suficientes para mostrar a evolução. {weights.length===1?'Existe 1 registo.':''}</p>:<div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{weights.map(w=><div key={w.id} style={weightPill}>{w.weight} kg <span>{w.recorded_at}</span></div>)}</div>}</div></>}</div> }
 
@@ -151,6 +221,13 @@ const muted:any={color:'rgba(255,255,255,.48)',fontFamily:"'Inter',sans-serif",f
 const inputStyle:any={background:'#0b0b0b',border:'1px solid rgba(255,255,255,.12)',color:WHITE,padding:'13px 14px',fontSize:14,outline:'none'}
 const goldButton:any={background:GOLD,border:'none',color:'#0b0b0b',fontFamily:"'League Spartan',sans-serif",fontWeight:800,letterSpacing:'.12em',padding:'14px',cursor:'pointer'}
 const ghostButton:any={background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.1)',color:'rgba(255,255,255,.65)',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:700,letterSpacing:'.14em',padding:'6px 10px',cursor:'pointer'}
+const dangerButton:any={background:'transparent',border:'1px solid rgba(192,57,43,.35)',color:'#e7a19a',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:700,letterSpacing:'.12em',padding:'7px 9px',cursor:'pointer'}
+const closeButton:any={background:'transparent',border:'1px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.65)',fontSize:22,width:34,height:34,cursor:'pointer'}
+const labelStyle:any={fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.12em',color:'rgba(255,255,255,.45)'}
+const successStyle:any={background:'rgba(46,160,67,.12)',border:'1px solid rgba(46,160,67,.3)',color:'#9fe0a7',padding:'10px 12px',fontSize:12}
+const formGrid:any={display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}
+const modalBackdrop:any={position:'fixed',inset:0,background:'rgba(0,0,0,.72)',backdropFilter:'blur(8px)',display:'grid',placeItems:'center',padding:20,zIndex:300}
+const modal:any={width:'min(680px,100%)',maxHeight:'90vh',overflowY:'auto',background:'#111',border:'1px solid rgba(212,175,55,.2)',padding:28,boxShadow:'0 30px 100px rgba(0,0,0,.65)'}
 const errorStyle:any={background:'rgba(192,57,43,.12)',border:'1px solid rgba(192,57,43,.3)',color:'#f0a49b',padding:'10px 12px',fontSize:12}
 const dashboardShell:any={minHeight:'100vh',background:'linear-gradient(135deg,#0b0b0b,#171717 55%,#0b0b0b)',color:WHITE}
 const dashHeader:any={height:64,borderBottom:'1px solid rgba(212,175,55,.12)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 24px',background:'rgba(11,11,11,.88)',backdropFilter:'blur(12px)'}

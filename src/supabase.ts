@@ -53,6 +53,40 @@ export async function signIn(email: string, password: string): Promise<Session> 
   return session
 }
 
+
+export async function signUp(email: string, password: string) {
+  const data = await request('/auth/v1/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+  return data
+}
+
+export async function createClientProfile(token: string, profile: {
+  id: string
+  full_name: string
+  email: string
+  initial_weight?: number | null
+  current_weight?: number | null
+  height?: number | null
+  goal_weight?: number | null
+  goal?: string | null
+  start_date?: string | null
+}) {
+  const rows = await request('/rest/v1/clients', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify(profile),
+  }, token)
+  return rows?.[0] ?? null
+}
+
+export async function deleteClientProfile(token: string, clientId: string) {
+  await request(`/rest/v1/clients?id=eq.${encodeURIComponent(clientId)}`, {
+    method: 'DELETE',
+  }, token)
+}
+
 export function signOut() {
   setSession(null)
 }
