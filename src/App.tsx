@@ -37,8 +37,7 @@ const PAGES = [
   { component: P29_ProgressTracker, title: 'Registo de Progresso' }, { component: P30_WorkoutLog, title: 'Diário de Treino' },
   { component: P31_GroceryChecklist, title: 'Lista de Compras Imprimível' }, { component: P32_HabitTracker, title: 'Registo de Hábitos' },
   { component: P33_WeeklyPlanner, title: 'Planeador Semanal' }, { component: P34_BeforeAfter, title: 'Antes e Depois' },
-  { component: P35_ActionPlan, title: 'Plano de Ação Final' }, { component: P36_ThankYou, title: 'Obrigado' },
-  { component: P37_QRCode, title: 'Código QR / Coaching' },
+  { component: P35_ActionPlan, title: 'Plano de Ação Final' },
   { component: P38_FatLossDivider, title: 'Perda de Gordura' },
   { component: P39_FatLossFoundations, title: 'Fundamentos da Perda de Gordura' },
   { component: P40_CalorieDeficit, title: 'Défice Calórico' },
@@ -47,6 +46,8 @@ const PAGES = [
   { component: P43_TrainingAndCardio, title: 'Treino, Passos e Cardio' },
   { component: P44_Plateaus, title: 'Plateaus e Ajustes' },
   { component: P45_FatLossPlan, title: 'Plano de 12 Semanas — Definição' },
+  { component: P36_ThankYou, title: 'Obrigado' },
+  { component: P37_QRCode, title: 'Código QR / Coaching' },
 ]
 
 const SUPABASE_FUNCTION_URL = 'https://hopluplbpywekkvzvmyu.supabase.co/functions/v1'
@@ -80,9 +81,9 @@ async function updateClientEmailViaFunction(token: string, userId: string, email
 const GOLD = '#D4AF37'
 const WHITE = '#FFFFFF'
 const SECTIONS = [
-  { label: 'Introdução', range: [0, 3] }, { label: 'Nutrição', range: [4, 16] },
-  { label: 'Treino', range: [17, 24] }, { label: 'FAQ e Ferramentas', range: [25, 36] },
-  { label: 'Perda de Gordura', range: [37, 44] },
+  { label: 'Introdução', range: [0, 3] }, { label: 'Ganhar Massa', range: [4, 16] },
+  { label: 'Treino', range: [17, 24] }, { label: 'FAQ', range: [25, 27] },
+  { label: 'Perder Gordura', range: [35, 42] },
 ]
 
 function Login({ onLogin }: { onLogin: (s: Session, admin: boolean) => void }) {
@@ -815,8 +816,71 @@ function RatingField({label,value,onChange,ratings}:{label:string,value:string,o
   return <div><div style={labelStyle}>{label}</div><div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5,marginTop:8}}>{ratings.map(r=><button key={r} type="button" onClick={()=>onChange(String(r))} aria-pressed={value===String(r)} style={{...ratingButton,background:value===String(r)?GOLD:'rgba(255,255,255,.035)',borderColor:value===String(r)?GOLD:'rgba(255,255,255,.1)',color:value===String(r)?'#090909':'rgba(255,255,255,.65)'}}>{r}</button>)}</div></div>
 }
 
+function GoalChooser({onSelect,onClose}:{onSelect:(page:number)=>void,onClose:()=>void}){
+  return <div style={journeyBackdrop}>
+    <div style={journeyModal}>
+      <div style={{...brand,fontSize:17}}>MASSA<span>+</span></div>
+      <div style={eyebrow}>ESCOLHE O TEU PERCURSO</div>
+      <h2 style={{...title,fontSize:'clamp(32px,5vw,52px)',maxWidth:680}}>Qual é o teu objetivo?</h2>
+      <p style={{...muted,maxWidth:620,marginBottom:24}}>Podes consultar todo o e-book a qualquer momento. Esta escolha leva-te diretamente ao conteúdo mais relevante.</p>
+      <div style={journeyGrid}>
+        <button onClick={()=>onSelect(4)} style={journeyCard}>
+          <span style={journeyNumber}>01</span><span style={journeyTag}>CONSTRUIR</span>
+          <strong>GANHAR MASSA MUSCULAR</strong>
+          <small>Calorias, macros, refeições, hipertrofia e progressão.</small>
+          <span style={journeyAction}>COMEÇAR PERCURSO →</span>
+        </button>
+        <button onClick={()=>onSelect(35)} style={{...journeyCard,background:'linear-gradient(145deg,rgba(212,175,55,.12),rgba(255,255,255,.025))',borderColor:'rgba(212,175,55,.3)'}}>
+          <span style={journeyNumber}>02</span><span style={journeyTag}>DEFINIR</span>
+          <strong>PERDER GORDURA</strong>
+          <small>Défice, saciedade, cardio, plateaus e plano de 12 semanas.</small>
+          <span style={journeyAction}>COMEÇAR PERCURSO →</span>
+        </button>
+      </div>
+      <button onClick={onClose} style={{...ghostButton,marginTop:18}}>VER O E-BOOK COMPLETO</button>
+    </div>
+  </div>
+}
+
+function ToolsPanel({onClose,onGo}:{onClose:()=>void,onGo:(page:number)=>void}){
+  const [sex,setSex]=useState<'male'|'female'>('male')
+  const [age,setAge]=useState('30'),[weight,setWeight]=useState('75'),[height,setHeight]=useState('175')
+  const [activity,setActivity]=useState('1.55'),[goal,setGoal]=useState<'gain'|'maintain'|'loss'>('gain')
+  const w=Number(weight),h=Number(height),a=Number(age)
+  const bmr=w&&h&&a?10*w+6.25*h-5*a+(sex==='male'?5:-161):0
+  const maintenance=Math.round(bmr*Number(activity))
+  const target=goal==='gain'?Math.round(maintenance*1.10):goal==='loss'?Math.round(maintenance*.85):maintenance
+  const links=[
+    ['REGISTO DE PROGRESSO','Peso, medidas e evolução',28],['DIÁRIO DE TREINO','Séries, repetições e cargas',29],
+    ['LISTA DE COMPRAS','Checklist alimentar',30],['HÁBITOS','Consistência diária',31],
+    ['PLANEADOR SEMANAL','Organiza treino e refeições',32],['ANTES E DEPOIS','Registo visual',33],
+  ] as const
+  return <div style={toolsBackdrop}>
+    <div style={toolsModal}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:20}}><div><div style={eyebrow}>FERRAMENTAS MASSA+</div><h2 style={{...title,fontSize:38}}>Calcula. Planeia. Regista.</h2><p style={{...muted,margin:0}}>Recursos rápidos para transformar informação em ação.</p></div><button onClick={onClose} style={closeButton}>×</button></div>
+      <div style={toolsLayout}>
+        <div style={calculatorCard}>
+          <div style={cardTitle}>CALCULADORA DE CALORIAS</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            <select value={sex} onChange={e=>setSex(e.target.value as 'male'|'female')} style={inputStyle}><option value="male">Masculino</option><option value="female">Feminino</option></select>
+            <input value={age} onChange={e=>setAge(e.target.value)} type="number" min="18" placeholder="Idade" style={inputStyle}/>
+            <input value={weight} onChange={e=>setWeight(e.target.value)} type="number" min="1" step=".1" placeholder="Peso kg" style={inputStyle}/>
+            <input value={height} onChange={e=>setHeight(e.target.value)} type="number" min="1" placeholder="Altura cm" style={inputStyle}/>
+            <select value={activity} onChange={e=>setActivity(e.target.value)} style={{...inputStyle,gridColumn:'1/-1'}}><option value="1.2">Sedentário</option><option value="1.375">Atividade ligeira</option><option value="1.55">Atividade moderada</option><option value="1.725">Muito ativo</option></select>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginTop:9}}>{([['gain','GANHAR'],['maintain','MANTER'],['loss','PERDER']] as const).map(([k,l])=><button key={k} onClick={()=>setGoal(k)} style={{...goalToggle,background:goal===k?GOLD:'rgba(255,255,255,.04)',color:goal===k?'#080808':'rgba(255,255,255,.55)',borderColor:goal===k?GOLD:'rgba(255,255,255,.1)'}}>{l}</button>)}</div>
+          <div style={calculatorResult}><span>ESTIMATIVA DIÁRIA</span><b>{target||'—'}</b><small>kcal</small><div>Manutenção estimada: {maintenance||'—'} kcal</div></div>
+          <p style={{...muted,fontSize:10,marginBottom:0}}>Estimativa inicial pela fórmula Mifflin–St Jeor. Ajusta através da tendência do peso e procura acompanhamento profissional quando necessário.</p>
+        </div>
+        <div><div style={cardTitle}>MODELOS DO E-BOOK</div><div style={toolLinksGrid}>{links.map(([name,desc,page])=><button key={name} onClick={()=>onGo(page)} style={toolLinkCard}><strong>{name}</strong><small>{desc}</small><span>ABRIR →</span></button>)}</div></div>
+      </div>
+    </div>
+  </div>
+}
+
 function Ebook() {
   const [current, setCurrent] = useState(0), [menuOpen,setMenuOpen]=useState(false), [scale,setScale]=useState(1)
+  const [goalOpen,setGoalOpen]=useState(true),[toolsOpen,setToolsOpen]=useState(false)
   const PAGE_W=794,PAGE_H=1123
   useEffect(()=>{const f=()=>{const w=window.innerWidth-120,h=window.innerHeight-140;setScale(Math.min(1,w/PAGE_W,h/PAGE_H))};f();window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f)},[])
   const prev=useCallback(()=>setCurrent(c=>Math.max(0,c-1)),[]), next=useCallback(()=>setCurrent(c=>Math.min(PAGES.length-1,c+1)),[])
@@ -826,7 +890,7 @@ function Ebook() {
     <div style={{position:'absolute',width:PAGE_W*scale+60,height:PAGE_H*scale+60,background:'radial-gradient(ellipse,rgba(212,175,55,.06) 0%,transparent 70%)',borderRadius:'50%',pointerEvents:'none'}}/>
     <div style={{position:'fixed',top:0,left:0,right:0,height:48,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 24px',background:'rgba(11,11,11,.9)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(212,175,55,.12)',zIndex:100}}>
       <div style={{display:'flex',alignItems:'center',gap:10}}><span style={{fontFamily:"'League Spartan',sans-serif",fontSize:13,fontWeight:800,letterSpacing:'.25em',color:GOLD}}>MASSA+</span><span style={{width:1,height:16,background:'rgba(255,255,255,.1)'}}/><span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.35)',letterSpacing:'.06em'}}>Ganhar músculo · Perder gordura · Transformar</span></div>
-      <div style={{display:'flex',gap:4}}>{SECTIONS.map(({label,range})=><button key={label} onClick={()=>setCurrent(range[0])} style={{background:current>=range[0]&&current<=range[1]?'rgba(212,175,55,.15)':'transparent',border:current>=range[0]&&current<=range[1]?'1px solid rgba(212,175,55,.3)':'1px solid transparent',color:current>=range[0]&&current<=range[1]?GOLD:'rgba(255,255,255,.35)',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:700,letterSpacing:'.14em',textTransform:'uppercase',padding:'5px 10px',cursor:'pointer'}}>{label}</button>)}</div>
+      <div style={{display:'flex',gap:4}}>{SECTIONS.map(({label,range})=><button key={label} onClick={()=>setCurrent(range[0])} style={{background:current>=range[0]&&current<=range[1]?'rgba(212,175,55,.15)':'transparent',border:current>=range[0]&&current<=range[1]?'1px solid rgba(212,175,55,.3)':'1px solid transparent',color:current>=range[0]&&current<=range[1]?GOLD:'rgba(255,255,255,.35)',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:700,letterSpacing:'.14em',textTransform:'uppercase',padding:'5px 10px',cursor:'pointer'}}>{label}</button>)}<button onClick={()=>setToolsOpen(true)} style={{...ghostButton,color:current>=28&&current<=34?GOLD:undefined}}>FERRAMENTAS</button></div>
       <div style={{display:'flex',alignItems:'center',gap:12}}><span style={{fontFamily:"'League Spartan',sans-serif",fontSize:11,color:'rgba(255,255,255,.35)'}}><span style={{color:GOLD,fontWeight:700}}>{current+1}</span> / {PAGES.length}</span><button onClick={()=>setMenuOpen(o=>!o)} style={ghostButton}>PÁGINAS</button><button onClick={()=>{window.location.hash='area'}} style={ghostButton}>ÁREA</button></div>
     </div>
     {menuOpen&&<div style={{position:'fixed',top:48,right:0,width:260,height:'calc(100vh - 48px)',background:'rgba(11,11,11,.97)',borderLeft:'1px solid rgba(212,175,55,.15)',overflowY:'auto',zIndex:99,padding:'16px 0'}}>{PAGES.map((p,i)=><button key={i} onClick={()=>{setCurrent(i);setMenuOpen(false)}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'9px 16px',background:i===current?'rgba(212,175,55,.1)':'transparent',border:'none',borderLeft:i===current?`2px solid ${GOLD}`:'2px solid transparent',cursor:'pointer',textAlign:'left'}}><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:i===current?GOLD:'rgba(255,255,255,.25)',minWidth:24}}>{i+1}</span><span style={{fontFamily:"'Inter',sans-serif",fontSize:11,color:i===current?WHITE:'rgba(255,255,255,.45)'}}>{p.title}</span></button>)}</div>}
@@ -836,6 +900,8 @@ function Ebook() {
       <button onClick={next} disabled={current===PAGES.length-1} style={{...arrowStyle,right:menuOpen?276:16,color:current===PAGES.length-1?'rgba(255,255,255,.15)':GOLD}}>{'→'}</button>
     </div>
     <div style={{position:'fixed',bottom:0,left:0,right:menuOpen?260:0,height:52,display:'flex',alignItems:'center',background:'rgba(11,11,11,.88)',backdropFilter:'blur(12px)',borderTop:'1px solid rgba(255,255,255,.05)',zIndex:100,padding:'0 50px'}}><div style={{flex:1,height:3,background:'rgba(255,255,255,.06)',borderRadius:2,position:'relative',overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${((current+1)/PAGES.length)*100}%`,background:GOLD,transition:'width .3s ease'}}/></div><div style={{marginLeft:14,fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.3)',whiteSpace:'nowrap',minWidth:120,textAlign:'right'}}>{PAGES[current].title}</div><div style={{marginLeft:14,display:'flex',gap:2}}>{PAGES.map((_,i)=><button key={i} onClick={()=>setCurrent(i)} style={{width:i===current?16:6,height:6,borderRadius:3,background:i===current?GOLD:'rgba(255,255,255,.12)',border:'none',cursor:'pointer',padding:0}}/>)}</div></div>
+    {goalOpen&&<GoalChooser onSelect={page=>{setCurrent(page);setGoalOpen(false)}} onClose={()=>setGoalOpen(false)}/>} 
+    {toolsOpen&&<ToolsPanel onClose={()=>setToolsOpen(false)} onGo={page=>{setCurrent(page);setToolsOpen(false)}}/>}
   </div>
 }
 
@@ -909,3 +975,18 @@ const emptyToolState:any={border:'1px dashed rgba(255,255,255,.1)',padding:28,te
 const featureGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:10}
 const feature:any={border:'1px solid rgba(255,255,255,.07)',padding:16,fontFamily:"'Inter',sans-serif",fontSize:13,display:'flex',justifyContent:'space-between',gap:12}
 const arrowStyle:any={position:'fixed',top:'50%',transform:'translateY(-50%)',background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.25)',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,transition:'all .15s',zIndex:10}
+const journeyBackdrop:any={position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,.84)',backdropFilter:'blur(14px)',display:'grid',placeItems:'center',padding:20,color:WHITE}
+const journeyModal:any={width:'min(900px,100%)',background:'linear-gradient(145deg,#151515,#090909)',border:'1px solid rgba(212,175,55,.22)',padding:'clamp(24px,5vw,48px)',boxShadow:'0 35px 120px rgba(0,0,0,.7)'}
+const journeyGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:12}
+const journeyCard:any={position:'relative',background:'rgba(255,255,255,.025)',border:'1px solid rgba(255,255,255,.1)',padding:24,color:WHITE,textAlign:'left',cursor:'pointer',display:'grid',gap:10,minHeight:225,fontFamily:"'Inter',sans-serif"}
+const journeyNumber:any={position:'absolute',right:18,top:12,fontFamily:"'Bebas Neue',sans-serif",fontSize:54,color:'rgba(255,255,255,.045)'}
+const journeyTag:any={fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.18em',color:GOLD}
+const journeyAction:any={fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.11em',color:GOLD,marginTop:'auto',paddingTop:14,borderTop:'1px solid rgba(255,255,255,.08)'}
+const toolsBackdrop:any={position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,.82)',backdropFilter:'blur(12px)',display:'grid',placeItems:'center',padding:18,color:WHITE}
+const toolsModal:any={width:'min(1060px,100%)',maxHeight:'92vh',overflowY:'auto',background:'#111',border:'1px solid rgba(212,175,55,.2)',padding:'clamp(22px,4vw,38px)',boxShadow:'0 35px 120px rgba(0,0,0,.7)'}
+const toolsLayout:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:22,marginTop:26}
+const calculatorCard:any={background:'linear-gradient(145deg,rgba(212,175,55,.08),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:20}
+const goalToggle:any={border:'1px solid rgba(255,255,255,.1)',padding:'9px 5px',fontFamily:"'League Spartan',sans-serif",fontSize:8,letterSpacing:'.08em',cursor:'pointer'}
+const calculatorResult:any={display:'grid',gridTemplateColumns:'1fr auto auto',alignItems:'end',gap:5,background:'#090909',border:'1px solid rgba(255,255,255,.08)',padding:16,margin:'12px 0',fontFamily:"'League Spartan',sans-serif"}
+const toolLinksGrid:any={display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}
+const toolLinkCard:any={background:'rgba(255,255,255,.025)',border:'1px solid rgba(255,255,255,.09)',padding:14,color:WHITE,textAlign:'left',cursor:'pointer',display:'grid',gap:6,fontFamily:"'Inter',sans-serif"}

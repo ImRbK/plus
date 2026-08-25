@@ -544,13 +544,13 @@ export function P04_TOC() {
     { num: "22", title: "Plano de Transformação de 12 Semanas", page: 27 },
     { num: "A1", title: "Registo de Progresso", page: 28 },
     { num: "A2", title: "Ferramentas e Modelos", page: 29 },
-    { num: "23", title: "Fundamentos da Perda de Gordura", page: 39 },
-    { num: "24", title: "Criar o Défice Certo", page: 40 },
-    { num: "25", title: "Macros para Saciedade e Força", page: 41 },
-    { num: "26", title: "Plano Alimentar de Definição", page: 42 },
-    { num: "27", title: "Treino, Passos e Cardio", page: 43 },
-    { num: "28", title: "Plateaus e Ajustes", page: 44 },
-    { num: "29", title: "Plano de Definição de 12 Semanas", page: 45 },
+    { num: "23", title: "Fundamentos da Perda de Gordura", page: 37 },
+    { num: "24", title: "Criar o Défice Certo", page: 38 },
+    { num: "25", title: "Macros para Saciedade e Força", page: 39 },
+    { num: "26", title: "Plano Alimentar de Definição", page: 40 },
+    { num: "27", title: "Treino, Passos e Cardio", page: 41 },
+    { num: "28", title: "Plateaus e Ajustes", page: 42 },
+    { num: "29", title: "Plano de Definição de 12 Semanas", page: 43 },
   ]
 
   const Linha = ({
@@ -6171,7 +6171,7 @@ export function P36_ThankYou() {
           ))}
         </div>
       </div>
-      <Footer pageNumber={36} dark />
+      <Footer pageNumber={44} dark />
     </Page>
   )
 }
@@ -6447,7 +6447,7 @@ export function P37_QRCode() {
           </div>
         </div>
       </div>
-      <Footer pageNumber={37} chapter="Coaching e Recursos" />
+      <Footer pageNumber={45} chapter="Coaching e Recursos" />
     </Page>
   )
 }
