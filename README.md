@@ -1,6 +1,13 @@
-# MASSA+ V2
+# MASSA+ V3
 
-E-book MASSA+ + primeira versão da área privada ligada ao Supabase.
+E-book interativo e plataforma de acompanhamento para ganho de massa muscular e perda de gordura.
+
+## Conteúdo
+
+- 37 páginas originais sobre nutrição, hipertrofia, treino, recuperação e ferramentas.
+- 8 páginas novas sobre perda de gordura, défice calórico, saciedade, plano alimentar, cardio, plateaus e um plano de 12 semanas.
+- 45 páginas no total.
+- Área privada de administrador e cliente com treinos, nutrição, progresso e check-ins.
 
 ## Publicação
 

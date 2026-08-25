@@ -12,6 +12,11 @@ import {
   P33_WeeklyPlanner, P34_BeforeAfter, P35_ActionPlan,
   P36_ThankYou, P37_QRCode,
 } from './ebook/pages'
+import {
+  P38_FatLossDivider, P39_FatLossFoundations, P40_CalorieDeficit,
+  P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
+  P44_Plateaus, P45_FatLossPlan,
+} from './ebook/lossPages'
 import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, type Session } from './supabase'
 
 const PAGES = [
@@ -34,6 +39,14 @@ const PAGES = [
   { component: P33_WeeklyPlanner, title: 'Planeador Semanal' }, { component: P34_BeforeAfter, title: 'Antes e Depois' },
   { component: P35_ActionPlan, title: 'Plano de Ação Final' }, { component: P36_ThankYou, title: 'Obrigado' },
   { component: P37_QRCode, title: 'Código QR / Coaching' },
+  { component: P38_FatLossDivider, title: 'Perda de Gordura' },
+  { component: P39_FatLossFoundations, title: 'Fundamentos da Perda de Gordura' },
+  { component: P40_CalorieDeficit, title: 'Défice Calórico' },
+  { component: P41_FatLossMacros, title: 'Macros e Saciedade' },
+  { component: P42_CuttingMealPlan, title: 'Plano Alimentar de Definição' },
+  { component: P43_TrainingAndCardio, title: 'Treino, Passos e Cardio' },
+  { component: P44_Plateaus, title: 'Plateaus e Ajustes' },
+  { component: P45_FatLossPlan, title: 'Plano de 12 Semanas — Definição' },
 ]
 
 const SUPABASE_FUNCTION_URL = 'https://hopluplbpywekkvzvmyu.supabase.co/functions/v1'
@@ -69,6 +82,7 @@ const WHITE = '#FFFFFF'
 const SECTIONS = [
   { label: 'Introdução', range: [0, 3] }, { label: 'Nutrição', range: [4, 16] },
   { label: 'Treino', range: [17, 24] }, { label: 'FAQ e Ferramentas', range: [25, 36] },
+  { label: 'Perda de Gordura', range: [37, 44] },
 ]
 
 function Login({ onLogin }: { onLogin: (s: Session, admin: boolean) => void }) {
@@ -811,7 +825,7 @@ function Ebook() {
   return <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#141414 0%,#1C1C1C 50%,#111 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',overflow:'hidden',position:'relative',userSelect:'none'}}>
     <div style={{position:'absolute',width:PAGE_W*scale+60,height:PAGE_H*scale+60,background:'radial-gradient(ellipse,rgba(212,175,55,.06) 0%,transparent 70%)',borderRadius:'50%',pointerEvents:'none'}}/>
     <div style={{position:'fixed',top:0,left:0,right:0,height:48,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 24px',background:'rgba(11,11,11,.9)',backdropFilter:'blur(12px)',borderBottom:'1px solid rgba(212,175,55,.12)',zIndex:100}}>
-      <div style={{display:'flex',alignItems:'center',gap:10}}><span style={{fontFamily:"'League Spartan',sans-serif",fontSize:13,fontWeight:800,letterSpacing:'.25em',color:GOLD}}>MASSA+</span><span style={{width:1,height:16,background:'rgba(255,255,255,.1)'}}/><span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.35)',letterSpacing:'.06em'}}>O Guia Completo para Construir Músculo</span></div>
+      <div style={{display:'flex',alignItems:'center',gap:10}}><span style={{fontFamily:"'League Spartan',sans-serif",fontSize:13,fontWeight:800,letterSpacing:'.25em',color:GOLD}}>MASSA+</span><span style={{width:1,height:16,background:'rgba(255,255,255,.1)'}}/><span style={{fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.35)',letterSpacing:'.06em'}}>Ganhar músculo · Perder gordura · Transformar</span></div>
       <div style={{display:'flex',gap:4}}>{SECTIONS.map(({label,range})=><button key={label} onClick={()=>setCurrent(range[0])} style={{background:current>=range[0]&&current<=range[1]?'rgba(212,175,55,.15)':'transparent',border:current>=range[0]&&current<=range[1]?'1px solid rgba(212,175,55,.3)':'1px solid transparent',color:current>=range[0]&&current<=range[1]?GOLD:'rgba(255,255,255,.35)',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:700,letterSpacing:'.14em',textTransform:'uppercase',padding:'5px 10px',cursor:'pointer'}}>{label}</button>)}</div>
       <div style={{display:'flex',alignItems:'center',gap:12}}><span style={{fontFamily:"'League Spartan',sans-serif",fontSize:11,color:'rgba(255,255,255,.35)'}}><span style={{color:GOLD,fontWeight:700}}>{current+1}</span> / {PAGES.length}</span><button onClick={()=>setMenuOpen(o=>!o)} style={ghostButton}>PÁGINAS</button><button onClick={()=>{window.location.hash='area'}} style={ghostButton}>ÁREA</button></div>
     </div>

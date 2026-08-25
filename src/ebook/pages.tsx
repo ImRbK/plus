@@ -151,7 +151,7 @@ export function P01_Cover() {
             marginBottom: 30,
           }}
         >
-          O Guia Completo para Construir Músculo
+          Ganhar Músculo · Perder Gordura · Transformar
         </div>
         <div
           style={{
@@ -544,6 +544,13 @@ export function P04_TOC() {
     { num: "22", title: "Plano de Transformação de 12 Semanas", page: 27 },
     { num: "A1", title: "Registo de Progresso", page: 28 },
     { num: "A2", title: "Ferramentas e Modelos", page: 29 },
+    { num: "23", title: "Fundamentos da Perda de Gordura", page: 39 },
+    { num: "24", title: "Criar o Défice Certo", page: 40 },
+    { num: "25", title: "Macros para Saciedade e Força", page: 41 },
+    { num: "26", title: "Plano Alimentar de Definição", page: 42 },
+    { num: "27", title: "Treino, Passos e Cardio", page: 43 },
+    { num: "28", title: "Plateaus e Ajustes", page: 44 },
+    { num: "29", title: "Plano de Definição de 12 Semanas", page: 45 },
   ]
 
   const Linha = ({
@@ -647,7 +654,7 @@ export function P04_TOC() {
           </div>
           <div>
             <Label size={8} color={GRAY_MID}>
-              Parte Dois — Treino e Ferramentas
+              Parte Dois e Três — Treino, Ferramentas e Definição
             </Label>
             {capitulosB.map((c) => (
               <Linha key={c.num} {...c} />
@@ -4682,7 +4689,7 @@ export function P28_TransformationPlan() {
 
 // ─── Página 29: Registo de Progresso ──────────────────────────────────────────
 
-function CaixaInput({ label, unit = "" }: { label: string unit?: string }) {
+function CaixaInput({ label, unit = "" }: { label: string; unit?: string }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <div
