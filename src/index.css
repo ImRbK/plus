@@ -11,6 +11,55 @@ body {
   margin: 0;
   background: #1A1A1A;
   font-family: 'Inter', sans-serif;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  transition: transform 160ms ease, border-color 160ms ease,
+    background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.55;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #d4af37;
+  outline-offset: 2px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+select {
+  color-scheme: dark;
+}
+
+.ebook-mobile-tools {
+  display: none;
 }
 
 ::-webkit-scrollbar {
@@ -26,4 +75,79 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(212, 175, 55, 0.6);
+}
+
+@media (max-width: 1100px) {
+  .ebook-section-nav {
+    display: none !important;
+  }
+
+  .ebook-mobile-tools {
+    display: inline-block !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-header {
+    height: 56px !important;
+    padding: 0 14px !important;
+  }
+
+  .dashboard-main {
+    width: min(100% - 22px, 1180px) !important;
+    padding-top: 30px !important;
+  }
+
+  .ebook-header {
+    padding: 0 10px !important;
+  }
+
+  .ebook-subtitle,
+  .ebook-brand-rule,
+  .ebook-page-count {
+    display: none !important;
+  }
+
+  .ebook-actions {
+    gap: 5px !important;
+  }
+
+  .ebook-actions button {
+    padding: 6px 7px !important;
+    font-size: 8px !important;
+  }
+
+  .ebook-footer {
+    right: 0 !important;
+    padding: 0 14px !important;
+    height: 46px !important;
+  }
+
+  .ebook-dots {
+    display: none !important;
+  }
+
+  .ebook-current-title {
+    min-width: 0 !important;
+    max-width: 45vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 520px) {
+  .dashboard-identity {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
