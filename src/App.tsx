@@ -17,7 +17,7 @@ import {
   P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
   P44_Plateaus, P45_FatLossPlan,
 } from './ebook/lossPages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -371,6 +371,7 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
         </div>
         <WeightManager client={client} session={session} weights={weights} onRefresh={load}/>
       </div>
+      <div style={{gridColumn:'1/-1'}}><WeightProgressChart client={client} weights={weights}/></div>
     </div>}
     {tab==='workout' && <WorkoutManager client={client} session={session} workouts={workouts} onRefresh={load}/>}
     {tab==='nutrition' && <NutritionManager client={client} session={session} plans={nutrition} onRefresh={load}/>}
@@ -588,10 +589,84 @@ async function loadMealsAfterChange(planId:number,setMeals:React.Dispatch<React.
 }
 
 function CheckinManager({client,session,checkins,onRefresh}:{client:any,session:Session,checkins:any[],onRefresh:()=>void}) {
-  const [weight,setWeight]=useState(''),[training,setTraining]=useState(''),[nutrition,setNutrition]=useState(''),[sleep,setSleep]=useState(''),[notes,setNotes]=useState('')
-  const add=async(e:React.FormEvent)=>{e.preventDefault();await createCheckIn(session.access_token,{client_id:client.id,weight:weight?Number(weight):null,training_rating:training?Number(training):null,nutrition_rating:nutrition?Number(nutrition):null,sleep_rating:sleep?Number(sleep):null,notes:notes||null});setWeight('');setTraining('');setNutrition('');setSleep('');setNotes('');onRefresh()}
-  return <div style={{display:'grid',gap:12}}><div style={card}><div style={cardTitle}>REGISTAR CHECK-IN</div><form onSubmit={add} style={{display:'grid',gap:8}}><div style={formGrid}><input value={weight} onChange={e=>setWeight(e.target.value)} placeholder="Peso kg" type="number" step=".1" style={inputStyle}/><input value={training} onChange={e=>setTraining(e.target.value)} placeholder="Treino 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={nutrition} onChange={e=>setNutrition(e.target.value)} placeholder="Nutrição 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={sleep} onChange={e=>setSleep(e.target.value)} placeholder="Sono 1-10" type="number" min="1" max="10" style={inputStyle}/></div><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observações / feedback" style={{...inputStyle,minHeight:100,resize:'vertical'}}/><button style={goldButton}>GUARDAR CHECK-IN</button></form></div>{checkins.length===0?<div style={card}><p style={muted}>Ainda não existem check-ins.</p></div>:<div style={card}><div style={cardTitle}>HISTÓRICO</div>{checkins.map(c=><div key={c.id} style={row}><div><strong>{c.created_at?.slice(0,10)}</strong><div style={small}>Peso {c.weight??'—'} kg · Treino {c.training_rating??'—'}/10 · Nutrição {c.nutrition_rating??'—'}/10 · Sono {c.sleep_rating??'—'}/10</div>{c.notes&&<div style={small}>{c.notes}</div>}</div><button onClick={async()=>{await deleteCheckIn(session.access_token,c.id);onRefresh()}} style={dangerButton}>×</button></div>)}</div>}</div>
+  const pending=checkins.filter(item=>!item.reviewed_at).length
+  return <div style={{display:'grid',gap:14}}>
+    <div style={checkinAdminHero}><div><div style={eyebrow}>ACOMPANHAMENTO</div><h3 style={{...title,fontSize:30,marginBottom:7}}>Check-ins de {client.full_name?.split(' ')[0]}</h3><p style={{...muted,margin:0}}>Revê cada semana e envia uma orientação clara ao cliente.</p></div><div style={reviewCount}><b>{pending}</b><span>POR REVER</span></div></div>
+    {checkins.length===0?<div style={emptyAdminState}><div style={cardTitle}>AINDA NÃO EXISTEM CHECK-INS</div><p style={muted}>Quando o cliente enviar o primeiro check-in, aparecerá aqui.</p></div>:checkins.map((item,index)=><AdminCheckinCard key={item.id} item={item} index={checkins.length-index} session={session} onRefresh={onRefresh}/>) }
+  </div>
 }
+
+function AdminCheckinCard({item,index,session,onRefresh}:{item:any,index:number,session:Session,onRefresh:()=>void}){
+  const [feedback,setFeedback]=useState(item.coach_feedback||'')
+  const [saving,setSaving]=useState(false),[message,setMessage]=useState('')
+  const save=async()=>{
+    setSaving(true);setMessage('')
+    try{await updateCheckIn(session.access_token,item.id,{coach_feedback:feedback.trim()||null,reviewed_at:new Date().toISOString()});setMessage('Feedback enviado ao cliente.');onRefresh()}
+    catch(e:any){setMessage(e.message||'Não foi possível guardar o feedback.')}finally{setSaving(false)}
+  }
+  return <div style={{...card,borderColor:item.reviewed_at?'rgba(76,166,106,.2)':'rgba(212,175,55,.22)'}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:14,flexWrap:'wrap'}}><div><div style={{display:'flex',gap:8,alignItems:'center'}}><div style={cardTitle}>CHECK-IN {String(index).padStart(2,'0')}</div><span style={{...reviewBadge,color:item.reviewed_at?'#81c990':'#e4bd54',borderColor:item.reviewed_at?'rgba(76,166,106,.3)':'rgba(212,175,55,.25)'}}>{item.reviewed_at?'REVISTO':'NOVO'}</span></div><div style={small}>{item.created_at?.slice(0,10)||'—'}</div></div><button onClick={async()=>{if(window.confirm('Eliminar este check-in?')){await deleteCheckIn(session.access_token,item.id);onRefresh()}}} style={dangerButton}>ELIMINAR</button></div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:8,margin:'17px 0'}}><div style={checkinMetric}><span>PESO</span><b>{item.weight??'—'} kg</b></div><div style={checkinMetric}><span>TREINO</span><b>{item.training_rating??'—'}/10</b></div><div style={checkinMetric}><span>NUTRIÇÃO</span><b>{item.nutrition_rating??'—'}/10</b></div><div style={checkinMetric}><span>SONO</span><b>{item.sleep_rating??'—'}/10</b></div></div>
+    {item.notes&&<div style={clientNote}><div style={labelStyle}>OBSERVAÇÕES DO CLIENTE</div><p style={{...text,margin:'8px 0 0'}}>{item.notes}</p></div>}
+    <div style={{marginTop:14}}><label style={labelStyle}>RESPOSTA DO TREINADOR<textarea value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Ex.: Excelente semana. Mantém as calorias e tenta melhorar o sono…" style={{...inputStyle,width:'100%',minHeight:95,resize:'vertical',marginTop:7}}/></label><button onClick={save} disabled={saving||!feedback.trim()} style={{...goldButton,width:'100%',marginTop:8}}>{saving?'A GUARDAR…':item.reviewed_at?'ATUALIZAR FEEDBACK':'ENVIAR FEEDBACK E MARCAR COMO REVISTO'}</button></div>
+    {message&&<div style={{...(message.includes('enviado')?successStyle:errorStyle),marginTop:10}}>{message}</div>}
+  </div>
+}
+function WeightProgressChart({client,weights}:{client:any,weights:any[]}){
+  const [period,setPeriod]=useState<'30'|'90'|'all'>('all')
+  const startRecord=client.initial_weight!=null?{id:'initial',weight:Number(client.initial_weight),recorded_at:client.start_date||weights[0]?.recorded_at||new Date().toISOString().slice(0,10)}:null
+  const allRecords=[...(startRecord?[startRecord]:[]),...weights]
+    .filter((item,index,array)=>Number.isFinite(Number(item.weight))&&array.findIndex(x=>x.id===item.id)===index)
+    .sort((a,b)=>String(a.recorded_at).localeCompare(String(b.recorded_at)))
+  const cutoff=period==='all'?null:new Date(Date.now()-Number(period)*86400000)
+  const records=cutoff?allRecords.filter(item=>new Date(item.recorded_at)>=cutoff):allRecords
+  const shown=records.length?records:allRecords.slice(-1)
+  const values=shown.map(item=>Number(item.weight))
+  const goal=client.goal_weight==null?null:Number(client.goal_weight)
+  const scaleValues=goal==null?values:[...values,goal]
+  const rawMin=Math.min(...scaleValues),rawMax=Math.max(...scaleValues)
+  const padding=Math.max(1,(rawMax-rawMin)*.18)
+  const min=rawMin-padding,max=rawMax+padding,span=max-min||1
+  const points=shown.map((item,index)=>({
+    ...item,
+    x:shown.length===1?50:4+(index/(shown.length-1))*92,
+    y:36-((Number(item.weight)-min)/span)*32,
+  }))
+  const pointString=points.map(p=>`${p.x},${p.y}`).join(' ')
+  const goalY=goal==null?null:36-((goal-min)/span)*32
+  const first=points[0],last=points[points.length-1]
+  const change=first&&last?Number((Number(last.weight)-Number(first.weight)).toFixed(1)):0
+  const remaining=goal!=null&&last?Number((goal-Number(last.weight)).toFixed(1)):null
+  const direction=change>0?'subiu':change<0?'desceu':'manteve-se'
+
+  if(!shown.length)return <div style={emptyChart}><div style={cardTitle}>EVOLUÇÃO DO PESO</div><p style={muted}>Ainda não existem pesagens. O primeiro peso enviado num check-in aparecerá aqui.</p></div>
+
+  return <div style={progressCard}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:14,flexWrap:'wrap'}}>
+      <div><div style={cardTitle}>EVOLUÇÃO DO PESO</div><p style={{...muted,margin:'-8px 0 0'}}>Acompanha a tendência, não apenas um dia isolado.</p></div>
+      <div style={{display:'flex',gap:5}}>{([['30','30 DIAS'],['90','90 DIAS'],['all','TOTAL']] as const).map(([key,label])=><button key={key} onClick={()=>setPeriod(key)} style={{...chartFilter,background:period===key?GOLD:'rgba(255,255,255,.04)',color:period===key?'#080808':'rgba(255,255,255,.55)',borderColor:period===key?GOLD:'rgba(255,255,255,.1)'}}>{label}</button>)}</div>
+    </div>
+    <div style={progressStats}>
+      <div style={chartStat}><span>INÍCIO</span><b>{first?.weight??'—'} kg</b></div>
+      <div style={chartStat}><span>ATUAL</span><b>{last?.weight??'—'} kg</b></div>
+      <div style={chartStat}><span>VARIAÇÃO</span><b style={{color:change===0?WHITE:GOLD}}>{change>0?'+':''}{change} kg</b></div>
+      <div style={chartStat}><span>OBJETIVO</span><b>{goal??'—'} kg</b></div>
+    </div>
+    <div style={chartShell}>
+      <div style={chartYAxis}><span>{max.toFixed(1)}</span><span>{((max+min)/2).toFixed(1)}</span><span>{min.toFixed(1)}</span></div>
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label={`Gráfico do peso: começou em ${first?.weight} kg e está em ${last?.weight} kg`} style={{width:'100%',height:'100%',overflow:'visible'}}>
+        {[4,20,36].map(y=><line key={y} x1="0" x2="100" y1={y} y2={y} stroke="rgba(255,255,255,.07)" strokeWidth=".25"/>) }
+        {goalY!=null&&<line x1="0" x2="100" y1={goalY} y2={goalY} stroke="rgba(212,175,55,.35)" strokeWidth=".45" strokeDasharray="2 2"/>}
+        {points.length>1&&<polyline points={pointString} fill="none" stroke={GOLD} strokeWidth="1.1" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round"/>}
+        {points.map(point=><circle key={point.id} cx={point.x} cy={point.y} r="1.25" fill={GOLD} stroke="#111" strokeWidth=".55" vectorEffect="non-scaling-stroke"/>)}
+      </svg>
+      {goalY!=null&&<div style={{...goalMarker,top:`${(goalY/40)*100}%`}}>OBJETIVO {goal} KG</div>}
+    </div>
+    <div style={{display:'flex',justifyContent:'space-between',gap:10,marginTop:8}}><span style={chartDate}>{first?.recorded_at}</span><span style={chartDate}>{last?.recorded_at}</span></div>
+    <div style={trendMessage}>Neste período, o teu peso <b>{direction}</b> {Math.abs(change)} kg.{remaining!=null&&<> Distância atual ao objetivo: <b>{Math.abs(remaining)} kg</b>.</>}</div>
+  </div>
+}
+
 function ClientView({client,weights,session,onProgressUpdated}:{client:any,weights:any[],session:Session,onProgressUpdated:()=>Promise<void>}) {
   const [tab,setTab]=useState<'profile'|'workout'|'nutrition'|'checkin'>('profile')
   const [workouts,setWorkouts]=useState<any[]>([])
@@ -671,7 +746,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
     {tab==='profile'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18}}>
       <div style={card}><div style={cardTitle}>OBJETIVO</div><div style={bigNumber}>{client.current_weight ?? client.initial_weight ?? '—'} <small>kg</small></div><p style={muted}>Objetivo: {client.goal_weight ?? '—'} kg</p></div>
       <div style={card}><div style={cardTitle}>DADOS</div><p style={text}><b>Altura:</b> {client.height ?? '—'} cm</p><p style={text}><b>Objetivo:</b> {client.goal ?? '—'}</p><p style={text}><b>Início:</b> {client.start_date ?? '—'}</p></div>
-      <div style={{...card,gridColumn:'1/-1'}}><div style={cardTitle}>EVOLUÇÃO DO PESO</div>{weights.length<2?<p style={muted}>Ainda não há registos suficientes para mostrar a evolução. {weights.length===1?'Existe 1 registo.':''}</p>:<div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{weights.map(w=><div key={w.id} style={weightPill}>{w.weight} kg <span>{w.recorded_at}</span></div>)}</div>}</div>
+      <div style={{gridColumn:'1/-1'}}><WeightProgressChart client={client} weights={weights}/></div>
     </div>}
 
     {tab==='workout'&&<div style={{display:'grid',gap:14}}>
@@ -802,10 +877,11 @@ function ClientCheckinView({client,session,checkins,loading,error,onRefresh,onPr
       <div style={card}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}><div style={cardTitle}>HISTÓRICO</div><button onClick={onRefresh} disabled={loading} style={ghostButton}>ATUALIZAR</button></div>
         {loading?<p style={muted}>A carregar check-ins…</p>:error?<div style={errorStyle}>{error}</div>:checkins.length===0?<p style={muted}>Ainda não enviaste nenhum check-in.</p>:<div style={{display:'grid',gap:9}}>{checkins.map((item,index)=><div key={item.id} style={clientCheckinCard}>
-          <div style={{display:'flex',justifyContent:'space-between',gap:10}}><strong style={{fontFamily:"'League Spartan',sans-serif"}}>CHECK-IN {String(checkins.length-index).padStart(2,'0')}</strong><span style={small}>{item.created_at?.slice(0,10)||'—'}</span></div>
+          <div style={{display:'flex',justifyContent:'space-between',gap:10}}><div style={{display:'flex',gap:7,alignItems:'center'}}><strong style={{fontFamily:"'League Spartan',sans-serif"}}>CHECK-IN {String(checkins.length-index).padStart(2,'0')}</strong><span style={{...reviewBadge,color:item.reviewed_at?'#81c990':'#e4bd54'}}>{item.reviewed_at?'RESPONDIDO':'A AGUARDAR'}</span></div><span style={small}>{item.created_at?.slice(0,10)||'—'}</span></div>
           <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}><span style={checkinScore}>TREINO <b>{item.training_rating??'—'}/10</b></span><span style={checkinScore}>NUTRIÇÃO <b>{item.nutrition_rating??'—'}/10</b></span><span style={checkinScore}>SONO <b>{item.sleep_rating??'—'}/10</b></span></div>
           <div style={{...small,marginTop:9}}>Peso: {item.weight??'—'} kg</div>
           {item.notes&&<p style={{...muted,margin:'9px 0 0'}}>{item.notes}</p>}
+          {item.coach_feedback&&<div style={coachReply}><div style={labelStyle}>RESPOSTA DO TREINADOR</div><p style={{...text,margin:'8px 0 0'}}>{item.coach_feedback}</p></div>}
         </div>)}</div>}
       </div>
     </div>
@@ -962,6 +1038,12 @@ const ratingButton:any={minHeight:40,border:'1px solid rgba(255,255,255,.1)',fon
 const checkinTip:any={background:'linear-gradient(135deg,rgba(212,175,55,.09),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:20}
 const clientCheckinCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14}
 const checkinScore:any={border:'1px solid rgba(212,175,55,.15)',background:'rgba(212,175,55,.045)',padding:'7px 8px',fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.06em',color:'rgba(255,255,255,.55)'}
+const checkinAdminHero:any={background:'linear-gradient(135deg,rgba(212,175,55,.10),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:24,display:'flex',justifyContent:'space-between',alignItems:'center',gap:20,flexWrap:'wrap'}
+const reviewCount:any={width:92,height:72,border:'1px solid rgba(212,175,55,.22)',background:'rgba(0,0,0,.18)',display:'grid',placeItems:'center',alignContent:'center',gap:2,fontFamily:"'League Spartan',sans-serif",color:GOLD}
+const reviewBadge:any={border:'1px solid rgba(212,175,55,.2)',padding:'3px 5px',fontFamily:"'League Spartan',sans-serif",fontSize:7,letterSpacing:'.08em',whiteSpace:'nowrap'}
+const checkinMetric:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.18)',padding:12,display:'grid',gap:5,fontFamily:"'League Spartan',sans-serif",fontSize:9,color:'rgba(255,255,255,.4)'}
+const clientNote:any={borderLeft:`3px solid ${GOLD}`,background:'rgba(212,175,55,.045)',padding:'12px 14px'}
+const coachReply:any={marginTop:12,border:'1px solid rgba(76,166,106,.22)',background:'rgba(76,166,106,.07)',padding:'12px 13px'}
 const controlGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}
 const controlCard:any={background:'linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.16))',border:'1px solid rgba(255,255,255,.08)',padding:18,textAlign:'left',color:WHITE,cursor:'pointer',display:'grid',gap:5,fontFamily:"'Inter',sans-serif"}
 const controlLabel:any={fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.15em',color:GOLD}
@@ -990,3 +1072,13 @@ const goalToggle:any={border:'1px solid rgba(255,255,255,.1)',padding:'9px 5px',
 const calculatorResult:any={display:'grid',gridTemplateColumns:'1fr auto auto',alignItems:'end',gap:5,background:'#090909',border:'1px solid rgba(255,255,255,.08)',padding:16,margin:'12px 0',fontFamily:"'League Spartan',sans-serif"}
 const toolLinksGrid:any={display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:8}
 const toolLinkCard:any={background:'rgba(255,255,255,.025)',border:'1px solid rgba(255,255,255,.09)',padding:14,color:WHITE,textAlign:'left',cursor:'pointer',display:'grid',gap:6,fontFamily:"'Inter',sans-serif"}
+const progressCard:any={...card,background:'linear-gradient(145deg,rgba(212,175,55,.055),rgba(255,255,255,.025))',borderColor:'rgba(212,175,55,.16)'}
+const progressStats:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:8,margin:'20px 0'}
+const chartStat:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.18)',padding:12,display:'grid',gap:5,fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.08em',color:'rgba(255,255,255,.4)'}
+const chartFilter:any={border:'1px solid rgba(255,255,255,.1)',padding:'7px 9px',fontFamily:"'League Spartan',sans-serif",fontSize:8,letterSpacing:'.08em',cursor:'pointer'}
+const chartShell:any={height:250,position:'relative',marginLeft:38,borderLeft:'1px solid rgba(255,255,255,.08)',borderBottom:'1px solid rgba(255,255,255,.08)',padding:'8px 8px 4px'}
+const chartYAxis:any={position:'absolute',right:'calc(100% + 9px)',top:5,bottom:3,display:'flex',flexDirection:'column',justifyContent:'space-between',fontFamily:"'Inter',sans-serif",fontSize:8,color:'rgba(255,255,255,.3)',textAlign:'right'}
+const goalMarker:any={position:'absolute',right:8,transform:'translateY(-50%)',background:'#17140a',border:'1px solid rgba(212,175,55,.25)',color:GOLD,padding:'3px 5px',fontFamily:"'League Spartan',sans-serif",fontSize:7,letterSpacing:'.07em'}
+const chartDate:any={fontFamily:"'Inter',sans-serif",fontSize:8,color:'rgba(255,255,255,.3)'}
+const trendMessage:any={marginTop:14,borderLeft:`3px solid ${GOLD}`,background:'rgba(212,175,55,.06)',padding:'11px 13px',fontFamily:"'Inter',sans-serif",fontSize:10.5,lineHeight:1.55,color:'rgba(255,255,255,.62)'}
+const emptyChart:any={...card,gridColumn:'1/-1',borderStyle:'dashed',textAlign:'center',padding:'38px 24px'}

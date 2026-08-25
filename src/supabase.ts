@@ -199,3 +199,12 @@ export async function createCheckIn(token: string, data: any) {
 export async function deleteCheckIn(token: string, id: number) {
   await request(`/rest/v1/check_ins?id=eq.${id}`, {method:'DELETE'}, token)
 }
+
+export async function updateCheckIn(token: string, id: number, data: Record<string, any>) {
+  const rows = await request(`/rest/v1/check_ins?id=eq.${id}`, {
+    method:'PATCH',
+    headers:{Prefer:'return=representation'},
+    body:JSON.stringify(data),
+  }, token)
+  return rows?.[0] ?? null
+}
