@@ -322,22 +322,115 @@ function ExerciseEditor({session,workout,exercises,onRefresh}:{session:Session,w
 }
 
 function NutritionManager({client,session,plans,onRefresh}:{client:any,session:Session,plans:any[],onRefresh:()=>void}) {
-  const [name,setName]=useState(''),[cal,setCal]=useState(''),[protein,setProtein]=useState(''),[carbs,setCarbs]=useState(''),[fats,setFats]=useState(''),[open,setOpen]=useState<number|null>(null),[meals,setMeals]=useState<Record<number,any[]>>({})
-  const add=async(e:React.FormEvent)=>{e.preventDefault();await createNutritionPlan(session.access_token,{client_id:client.id,name:name.trim(),calories:cal?Number(cal):null,protein:protein?Number(protein):null,carbohydrates:carbs?Number(carbs):null,fats:fats?Number(fats):null});setName('');setCal('');setProtein('');setCarbs('');setFats('');onRefresh()}
-  const loadMeals=async(id:number)=>{setOpen(id);setMeals({...meals,[id]:await getMeals(session.access_token,id)})}
-  return <div style={{display:'grid',gap:12}}>
-    <div style={card}><div style={cardTitle}>NOVO PLANO ALIMENTAR</div><form onSubmit={add} style={{display:'grid',gap:8}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nome (ex.: Ganho de massa — 3000 kcal)" required style={inputStyle}/><div style={formGrid}><input value={cal} onChange={e=>setCal(e.target.value)} placeholder="Calorias" type="number" style={inputStyle}/><input value={protein} onChange={e=>setProtein(e.target.value)} placeholder="Proteína g" type="number" step=".1" style={inputStyle}/><input value={carbs} onChange={e=>setCarbs(e.target.value)} placeholder="Hidratos g" type="number" step=".1" style={inputStyle}/><input value={fats} onChange={e=>setFats(e.target.value)} placeholder="Gordura g" type="number" step=".1" style={inputStyle}/></div><button style={goldButton}>CRIAR PLANO</button></form></div>
-    {plans.map(p=><div key={p.id} style={card}><div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center'}}><div><div style={cardTitle}>{p.name}</div><div style={small}>{p.calories??'—'} kcal · P {p.protein??'—'}g · HC {p.carbohydrates??'—'}g · G {p.fats??'—'}g</div></div><div style={{display:'flex',gap:8}}><button onClick={()=>loadMeals(p.id)} style={ghostButton}>{open===p.id?'FECHAR':'REFEIÇÕES'}</button><button onClick={async()=>{await deleteNutritionPlan(session.access_token,p.id);onRefresh()}} style={dangerButton}>ELIMINAR</button></div></div>{open===p.id&&<MealEditor session={session} plan={p} meals={meals[p.id]||[]} onRefresh={()=>loadMeals(p.id)}/>}</div>)}
+  const [name,setName]=useState(''),[cal,setCal]=useState(''),[protein,setProtein]=useState(''),[carbs,setCarbs]=useState(''),[fats,setFats]=useState('')
+  const [formOpen,setFormOpen]=useState(plans.length===0),[open,setOpen]=useState<number|null>(null),[meals,setMeals]=useState<Record<number,any[]>>({})
+  const [saving,setSaving]=useState(false),[message,setMessage]=useState('')
+
+  const resetForm=()=>{setName('');setCal('');setProtein('');setCarbs('');setFats('')}
+  const add=async(e:React.FormEvent)=>{
+    e.preventDefault();setSaving(true);setMessage('')
+    try{
+      await createNutritionPlan(session.access_token,{client_id:client.id,name:name.trim(),calories:cal?Number(cal):null,protein:protein?Number(protein):null,carbohydrates:carbs?Number(carbs):null,fats:fats?Number(fats):null})
+      resetForm();setFormOpen(false);setMessage('Plano alimentar criado com sucesso.');onRefresh()
+    }catch(e:any){setMessage(e.message||'Não foi possível criar o plano alimentar.')}finally{setSaving(false)}
+  }
+  const loadMeals=async(id:number)=>{
+    if(open===id){setOpen(null);return}
+    setMessage('');setOpen(id)
+    try{setMeals(current=>({...current,[id]:current[id]||[]}));const rows=await getMeals(session.access_token,id);setMeals(current=>({...current,[id]:rows}))}
+    catch(e:any){setMessage(e.message||'Não foi possível carregar as refeições.')}
+  }
+  const removePlan=async(plan:any)=>{
+    if(!window.confirm(`Eliminar o plano “${plan.name}” e as refeições associadas?`))return
+    try{await deleteNutritionPlan(session.access_token,plan.id);if(open===plan.id)setOpen(null);onRefresh()}
+    catch(e:any){setMessage(e.message||'Não foi possível eliminar o plano.')}
+  }
+  const duplicatePlan=(plan:any)=>{
+    setName(`${plan.name} — cópia`);setCal(plan.calories?.toString()||'');setProtein(plan.protein?.toString()||'');setCarbs(plan.carbohydrates?.toString()||'');setFats(plan.fats?.toString()||'');setFormOpen(true);window.scrollTo({top:0,behavior:'smooth'})
+  }
+
+  return <div style={{display:'grid',gap:16}}>
+    <div style={nutritionAdminHero}>
+      <div>
+        <div style={eyebrow}>PLANEAMENTO NUTRICIONAL</div>
+        <h3 style={{...title,fontSize:30,marginBottom:8}}>Plano de {client.full_name?.split(' ')[0]||'cliente'}</h3>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <span style={adminInfoPill}>ATUAL <b>{client.current_weight??'—'} kg</b></span>
+          <span style={adminInfoPill}>OBJETIVO <b>{client.goal_weight??'—'} kg</b></span>
+          <span style={adminInfoPill}>PLANOS <b>{plans.length}</b></span>
+        </div>
+      </div>
+      <button onClick={()=>{setFormOpen(v=>!v);setMessage('')}} style={goldButton}>{formOpen?'FECHAR':'＋ NOVO PLANO'}</button>
+    </div>
+
+    {message&&<div style={message.includes('sucesso')?successStyle:errorStyle}>{message}</div>}
+
+    {formOpen&&<div style={{...card,borderColor:'rgba(212,175,55,.25)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}><div><div style={cardTitle}>NOVO PLANO ALIMENTAR</div><p style={{...muted,marginTop:-8}}>Define primeiro o objetivo diário. Depois adiciona as refeições.</p></div><button type="button" onClick={()=>{resetForm();setFormOpen(false)}} style={closeButton}>×</button></div>
+      <form onSubmit={add} style={{display:'grid',gap:10,marginTop:16}}>
+        <label style={labelStyle}>NOME DO PLANO<input value={name} onChange={e=>setName(e.target.value)} placeholder="Ex.: Ganho de massa — 3000 kcal" required style={{...inputStyle,width:'100%',marginTop:6}}/></label>
+        <div style={formGrid}>
+          <label style={labelStyle}>CALORIAS<input value={cal} onChange={e=>setCal(e.target.value)} placeholder="3000" type="number" min="0" style={{...inputStyle,width:'100%',marginTop:6}}/></label>
+          <label style={labelStyle}>PROTEÍNA (G)<input value={protein} onChange={e=>setProtein(e.target.value)} placeholder="180" type="number" min="0" step=".1" style={{...inputStyle,width:'100%',marginTop:6}}/></label>
+          <label style={labelStyle}>HIDRATOS (G)<input value={carbs} onChange={e=>setCarbs(e.target.value)} placeholder="400" type="number" min="0" step=".1" style={{...inputStyle,width:'100%',marginTop:6}}/></label>
+          <label style={labelStyle}>GORDURA (G)<input value={fats} onChange={e=>setFats(e.target.value)} placeholder="75" type="number" min="0" step=".1" style={{...inputStyle,width:'100%',marginTop:6}}/></label>
+        </div>
+        <button disabled={saving} style={goldButton}>{saving?'A CRIAR…':'CRIAR PLANO E ADICIONAR REFEIÇÕES'}</button>
+      </form>
+    </div>}
+
+    {plans.length===0&&!formOpen&&<div style={emptyAdminState}><div style={{fontSize:34}}>＋</div><div style={cardTitle}>AINDA NÃO EXISTEM PLANOS</div><p style={muted}>Cria o primeiro plano alimentar deste cliente.</p><button onClick={()=>setFormOpen(true)} style={goldButton}>CRIAR PRIMEIRO PLANO</button></div>}
+
+    {plans.map((plan,index)=>{
+      const planMeals=meals[plan.id]||[]
+      const totals=planMeals.reduce((sum:any,m:any)=>({calories:sum.calories+(Number(m.calories)||0),protein:sum.protein+(Number(m.protein)||0),carbohydrates:sum.carbohydrates+(Number(m.carbohydrates)||0),fats:sum.fats+(Number(m.fats)||0)}),{calories:0,protein:0,carbohydrates:0,fats:0})
+      return <div key={plan.id} style={{...card,padding:0,overflow:'hidden'}}>
+        <div style={{height:3,background:index===0?GOLD:'rgba(255,255,255,.12)'}}/>
+        <div style={{padding:24}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap'}}>
+            <div><div style={{...eyebrow,marginTop:0}}>{index===0?'PLANO PRINCIPAL':'PLANO ALTERNATIVO'}</div><h3 style={{...title,fontSize:27,marginBottom:4}}>{plan.name}</h3><div style={small}>{open===plan.id?`${planMeals.length} refeições configuradas`:'Abre o plano para gerir as refeições'}</div></div>
+            <div style={{display:'flex',gap:7,flexWrap:'wrap'}}><button onClick={()=>duplicatePlan(plan)} style={ghostButton}>DUPLICAR</button><button onClick={()=>loadMeals(plan.id)} style={{...goldButton,padding:'10px 13px'}}>{open===plan.id?'FECHAR PLANO':'GERIR REFEIÇÕES'}</button><button onClick={()=>removePlan(plan)} style={dangerButton}>ELIMINAR</button></div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:8,marginTop:20}}>
+            <div style={adminMacroCard}><span>CALORIAS</span><b>{plan.calories??'—'}</b><small>kcal</small></div>
+            <div style={adminMacroCard}><span>PROTEÍNA</span><b>{plan.protein??'—'}</b><small>g</small></div>
+            <div style={adminMacroCard}><span>HIDRATOS</span><b>{plan.carbohydrates??'—'}</b><small>g</small></div>
+            <div style={adminMacroCard}><span>GORDURA</span><b>{plan.fats??'—'}</b><small>g</small></div>
+          </div>
+          {open===plan.id&&<div style={{marginTop:22,paddingTop:22,borderTop:'1px solid rgba(255,255,255,.08)'}}>
+            {planMeals.length>0&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:7,marginBottom:18}}><div style={totalPill}>SOMA DAS REFEIÇÕES</div><div style={totalPill}><b>{totals.calories}</b> kcal</div><div style={totalPill}>P <b>{totals.protein}</b> g</div><div style={totalPill}>HC <b>{totals.carbohydrates}</b> g</div><div style={totalPill}>G <b>{totals.fats}</b> g</div></div>}
+            <MealEditor session={session} plan={plan} meals={planMeals} onRefresh={()=>loadMealsAfterChange(plan.id,setMeals,session.access_token)}/>
+          </div>}
+        </div>
+      </div>
+    })}
   </div>
 }
 
 function MealEditor({session,plan,meals,onRefresh}:{session:Session,plan:any,meals:any[],onRefresh:()=>void}) {
   const [name,setName]=useState(''),[cal,setCal]=useState(''),[protein,setProtein]=useState(''),[carbs,setCarbs]=useState(''),[fats,setFats]=useState(''),[ingredients,setIngredients]=useState(''),[preparation,setPreparation]=useState('')
-  const add=async(e:React.FormEvent)=>{e.preventDefault();await createMeal(session.access_token,{nutrition_plan_id:plan.id,name:name.trim(),calories:cal?Number(cal):null,protein:protein?Number(protein):null,carbohydrates:carbs?Number(carbs):null,fats:fats?Number(fats):null,ingredients:ingredients||null,preparation:preparation||null,meal_order:meals.length});setName('');setCal('');setProtein('');setCarbs('');setFats('');setIngredients('');setPreparation('');onRefresh()}
-  return <div style={{marginTop:20,paddingTop:18,borderTop:'1px solid rgba(255,255,255,.08)'}}><div style={cardTitle}>REFEIÇÕES</div>
-    {meals.map(m=><div key={m.id} style={row}><div><strong>{m.name}</strong><div style={small}>{m.calories??'—'} kcal · P {m.protein??'—'}g · HC {m.carbohydrates??'—'}g · G {m.fats??'—'}g</div>{m.ingredients&&<div style={small}>{m.ingredients}</div>}</div><button onClick={async()=>{await deleteMeal(session.access_token,m.id);onRefresh()}} style={dangerButton}>×</button></div>)}
-    <form onSubmit={add} style={{display:'grid',gap:8,marginTop:10}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Refeição (ex.: Pequeno-almoço)" required style={inputStyle}/><div style={formGrid}><input value={cal} onChange={e=>setCal(e.target.value)} placeholder="Kcal" type="number" style={inputStyle}/><input value={protein} onChange={e=>setProtein(e.target.value)} placeholder="Proteína" type="number" step=".1" style={inputStyle}/><input value={carbs} onChange={e=>setCarbs(e.target.value)} placeholder="Hidratos" type="number" step=".1" style={inputStyle}/><input value={fats} onChange={e=>setFats(e.target.value)} placeholder="Gordura" type="number" step=".1" style={inputStyle}/></div><input value={ingredients} onChange={e=>setIngredients(e.target.value)} placeholder="Alimentos / quantidades" style={inputStyle}/><input value={preparation} onChange={e=>setPreparation(e.target.value)} placeholder="Preparação" style={inputStyle}/><button style={goldButton}>ADICIONAR REFEIÇÃO</button></form>
+  const [formOpen,setFormOpen]=useState(meals.length===0),[saving,setSaving]=useState(false),[error,setError]=useState('')
+  const add=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setError('');try{await createMeal(session.access_token,{nutrition_plan_id:plan.id,name:name.trim(),calories:cal?Number(cal):null,protein:protein?Number(protein):null,carbohydrates:carbs?Number(carbs):null,fats:fats?Number(fats):null,ingredients:ingredients||null,preparation:preparation||null,meal_order:meals.length});setName('');setCal('');setProtein('');setCarbs('');setFats('');setIngredients('');setPreparation('');setFormOpen(false);onRefresh()}catch(e:any){setError(e.message||'Não foi possível adicionar a refeição.')}finally{setSaving(false)}}
+  const remove=async(meal:any)=>{if(!window.confirm(`Eliminar a refeição “${meal.name}”?`))return;try{await deleteMeal(session.access_token,meal.id);onRefresh()}catch(e:any){setError(e.message||'Não foi possível eliminar a refeição.')}}
+  return <div>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}><div><div style={cardTitle}>REFEIÇÕES</div><p style={{...muted,margin:'-9px 0 0'}}>Organiza os alimentos pela ordem em que o cliente os deve consumir.</p></div><button onClick={()=>setFormOpen(v=>!v)} style={ghostButton}>{formOpen?'FECHAR':'＋ ADICIONAR REFEIÇÃO'}</button></div>
+    {error&&<div style={{...errorStyle,marginBottom:12}}>{error}</div>}
+    {meals.length===0&&!formOpen&&<p style={muted}>Ainda não existem refeições neste plano.</p>}
+    <div style={{display:'grid',gap:9}}>{meals.map((m,index)=><div key={m.id} style={adminMealCard}><div style={mealOrder}>{String(index+1).padStart(2,'0')}</div><div style={{flex:1,minWidth:0}}><div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><strong style={{fontFamily:"'League Spartan',sans-serif",fontSize:16}}>{m.name}</strong><span style={{color:GOLD,fontFamily:"'League Spartan',sans-serif",fontSize:13}}>{m.calories??'—'} kcal</span></div><div style={{...small,marginTop:7}}>P {m.protein??'—'}g · HC {m.carbohydrates??'—'}g · G {m.fats??'—'}g</div>{m.ingredients&&<div style={{...small,whiteSpace:'pre-wrap',marginTop:8}}>{m.ingredients}</div>}</div><button onClick={()=>remove(m)} style={dangerButton}>ELIMINAR</button></div>)}</div>
+    {formOpen&&<form onSubmit={add} style={{display:'grid',gap:9,marginTop:16,padding:18,border:'1px solid rgba(212,175,55,.2)',background:'rgba(212,175,55,.035)'}}>
+      <div style={cardTitle}>NOVA REFEIÇÃO</div>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Nome (ex.: Pequeno-almoço)" required style={inputStyle}/>
+      <div style={formGrid}><input value={cal} onChange={e=>setCal(e.target.value)} placeholder="Calorias" type="number" min="0" style={inputStyle}/><input value={protein} onChange={e=>setProtein(e.target.value)} placeholder="Proteína g" type="number" min="0" step=".1" style={inputStyle}/><input value={carbs} onChange={e=>setCarbs(e.target.value)} placeholder="Hidratos g" type="number" min="0" step=".1" style={inputStyle}/><input value={fats} onChange={e=>setFats(e.target.value)} placeholder="Gordura g" type="number" min="0" step=".1" style={inputStyle}/></div>
+      <textarea value={ingredients} onChange={e=>setIngredients(e.target.value)} placeholder={'Alimentos e quantidades\nEx.: 100 g aveia\n300 ml leite\n1 banana'} style={{...inputStyle,minHeight:92,resize:'vertical'}}/>
+      <textarea value={preparation} onChange={e=>setPreparation(e.target.value)} placeholder="Modo de preparação (opcional)" style={{...inputStyle,minHeight:72,resize:'vertical'}}/>
+      <button disabled={saving} style={goldButton}>{saving?'A GUARDAR…':'GUARDAR REFEIÇÃO'}</button>
+    </form>}
   </div>
+}
+
+async function loadMealsAfterChange(planId:number,setMeals:React.Dispatch<React.SetStateAction<Record<number,any[]>>>,token:string){
+  const rows=await getMeals(token,planId)
+  setMeals(current=>({...current,[planId]:rows}))
 }
 
 function CheckinManager({client,session,checkins,onRefresh}:{client:any,session:Session,checkins:any[],onRefresh:()=>void}) {
@@ -558,6 +651,13 @@ const bigNumber:any={fontFamily:"'League Spartan',sans-serif",fontSize:52,fontWe
 const weightPill:any={border:'1px solid rgba(212,175,55,.22)',background:'rgba(212,175,55,.06)',padding:'10px 12px',fontFamily:"'League Spartan',sans-serif",color:WHITE}
 const workoutMetric:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.06)',padding:'7px 9px',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.75)'}
 const nutritionSummary:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.05)',padding:'14px 12px',display:'grid',gap:5,textAlign:'center',fontFamily:"'League Spartan',sans-serif",color:WHITE}
+const nutritionAdminHero:any={background:'linear-gradient(135deg,rgba(212,175,55,.10),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:24,display:'flex',justifyContent:'space-between',alignItems:'center',gap:20,flexWrap:'wrap'}
+const adminInfoPill:any={border:'1px solid rgba(255,255,255,.09)',background:'rgba(0,0,0,.22)',padding:'8px 10px',fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.08em',color:'rgba(255,255,255,.5)'}
+const adminMacroCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14,display:'grid',gridTemplateColumns:'1fr auto',alignItems:'end',gap:4,fontFamily:"'League Spartan',sans-serif"}
+const totalPill:any={border:'1px solid rgba(212,175,55,.15)',background:'rgba(212,175,55,.045)',padding:'9px 10px',fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.65)',textAlign:'center'}
+const adminMealCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14,display:'flex',alignItems:'flex-start',gap:13}
+const mealOrder:any={width:30,height:30,border:'1px solid rgba(212,175,55,.24)',display:'grid',placeItems:'center',fontFamily:"'League Spartan',sans-serif",fontSize:11,color:GOLD,flex:'0 0 auto'}
+const emptyAdminState:any={...card,textAlign:'center',display:'grid',justifyItems:'center',gap:8,padding:'46px 24px'}
 const featureGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:10}
 const feature:any={border:'1px solid rgba(255,255,255,.07)',padding:16,fontFamily:"'Inter',sans-serif",fontSize:13,display:'flex',justifyContent:'space-between',gap:12}
 const arrowStyle:any={position:'fixed',top:'50%',transform:'translateY(-50%)',background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.25)',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,transition:'all .15s',zIndex:10}
