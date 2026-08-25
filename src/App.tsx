@@ -124,7 +124,7 @@ function Dashboard({ session, admin, onLogout }: { session: Session, admin: bool
       <div style={eyebrow}>{admin?'PAINEL DE ADMINISTRAÇÃO':'ÁREA DO CLIENTE'}</div>
       <h1 style={title}>{admin?'Gestão MASSA+':`Olá${client?.full_name ? `, ${client.full_name.split(' ')[0]}` : ''}.`}</h1>
       <p style={muted}>{admin?'Gerir clientes e preparar a próxima fase da plataforma.':'Aqui vais encontrar o teu plano, evolução e ferramentas personalizadas.'}</p>
-      {loading ? <div style={card}>A carregar…</div> : error ? <div style={errorStyle}>{error}</div> : admin ? <AdminView clients={clients} session={session} onClientsChange={setClients}/> : <ClientView client={client} weights={weights}/>} 
+      {loading ? <div style={card}>A carregar…</div> : error ? <div style={errorStyle}>{error}</div> : admin ? <AdminView clients={clients} session={session} onClientsChange={setClients}/> : <ClientView client={client} weights={weights} session={session}/>} 
     </main>
   </div>
 }
@@ -345,7 +345,84 @@ function CheckinManager({client,session,checkins,onRefresh}:{client:any,session:
   const add=async(e:React.FormEvent)=>{e.preventDefault();await createCheckIn(session.access_token,{client_id:client.id,weight:weight?Number(weight):null,training_rating:training?Number(training):null,nutrition_rating:nutrition?Number(nutrition):null,sleep_rating:sleep?Number(sleep):null,notes:notes||null});setWeight('');setTraining('');setNutrition('');setSleep('');setNotes('');onRefresh()}
   return <div style={{display:'grid',gap:12}}><div style={card}><div style={cardTitle}>REGISTAR CHECK-IN</div><form onSubmit={add} style={{display:'grid',gap:8}}><div style={formGrid}><input value={weight} onChange={e=>setWeight(e.target.value)} placeholder="Peso kg" type="number" step=".1" style={inputStyle}/><input value={training} onChange={e=>setTraining(e.target.value)} placeholder="Treino 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={nutrition} onChange={e=>setNutrition(e.target.value)} placeholder="Nutrição 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={sleep} onChange={e=>setSleep(e.target.value)} placeholder="Sono 1-10" type="number" min="1" max="10" style={inputStyle}/></div><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observações / feedback" style={{...inputStyle,minHeight:100,resize:'vertical'}}/><button style={goldButton}>GUARDAR CHECK-IN</button></form></div>{checkins.length===0?<div style={card}><p style={muted}>Ainda não existem check-ins.</p></div>:<div style={card}><div style={cardTitle}>HISTÓRICO</div>{checkins.map(c=><div key={c.id} style={row}><div><strong>{c.created_at?.slice(0,10)}</strong><div style={small}>Peso {c.weight??'—'} kg · Treino {c.training_rating??'—'}/10 · Nutrição {c.nutrition_rating??'—'}/10 · Sono {c.sleep_rating??'—'}/10</div>{c.notes&&<div style={small}>{c.notes}</div>}</div><button onClick={async()=>{await deleteCheckIn(session.access_token,c.id);onRefresh()}} style={dangerButton}>×</button></div>)}</div>}</div>
 }
-function ClientView({client,weights}:{client:any,weights:any[]}) { return <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18,marginTop:28}}>{!client?<div style={{...card,gridColumn:'1/-1'}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>:<><div style={card}><div style={cardTitle}>OBJETIVO</div><div style={bigNumber}>{client.current_weight ?? client.initial_weight ?? '—'} <small>kg</small></div><p style={muted}>Objetivo: {client.goal_weight ?? '—'} kg</p></div><div style={card}><div style={cardTitle}>DADOS</div><p style={text}><b>Altura:</b> {client.height ?? '—'} cm</p><p style={text}><b>Objetivo:</b> {client.goal ?? '—'}</p><p style={text}><b>Início:</b> {client.start_date ?? '—'}</p></div><div style={{...card,gridColumn:'1/-1'}}><div style={cardTitle}>EVOLUÇÃO DO PESO</div>{weights.length<2?<p style={muted}>Ainda não há registos suficientes para mostrar a evolução. {weights.length===1?'Existe 1 registo.':''}</p>:<div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{weights.map(w=><div key={w.id} style={weightPill}>{w.weight} kg <span>{w.recorded_at}</span></div>)}</div>}</div></>}</div> }
+function ClientView({client,weights,session}:{client:any,weights:any[],session:Session}) {
+  const [tab,setTab]=useState<'profile'|'workout'>('profile')
+  const [workouts,setWorkouts]=useState<any[]>([])
+  const [exercisesByWorkout,setExercisesByWorkout]=useState<Record<string,any[]>>({})
+  const [loadingWorkouts,setLoadingWorkouts]=useState(false)
+  const [workoutError,setWorkoutError]=useState('')
+
+  const loadWorkouts=useCallback(async()=>{
+    if(!client?.id) return
+    setLoadingWorkouts(true)
+    setWorkoutError('')
+    try {
+      const plans=await getClientWorkouts(session.access_token,client.id)
+      const exerciseLists=await Promise.all(
+        plans.map((plan:any)=>getWorkoutExercises(session.access_token,plan.id))
+      )
+      const grouped:Record<string,any[]>={}
+      plans.forEach((plan:any,index:number)=>{grouped[String(plan.id)]=exerciseLists[index]||[]})
+      setWorkouts(plans)
+      setExercisesByWorkout(grouped)
+    } catch(e:any) {
+      setWorkoutError(e.message||'Não foi possível carregar os teus treinos.')
+    } finally {
+      setLoadingWorkouts(false)
+    }
+  },[client?.id,session.access_token])
+
+  useEffect(()=>{loadWorkouts()},[loadWorkouts])
+
+  if(!client) return <div style={{...card,marginTop:28}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>
+
+  return <div style={{display:'grid',gap:18,marginTop:28}}>
+    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+      <button onClick={()=>setTab('profile')} style={{...ghostButton,color:tab==='profile'?GOLD:undefined,borderColor:tab==='profile'?'rgba(212,175,55,.35)':undefined}}>PERFIL</button>
+      <button onClick={()=>setTab('workout')} style={{...ghostButton,color:tab==='workout'?GOLD:undefined,borderColor:tab==='workout'?'rgba(212,175,55,.35)':undefined}}>TREINO</button>
+    </div>
+
+    {tab==='profile'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18}}>
+      <div style={card}><div style={cardTitle}>OBJETIVO</div><div style={bigNumber}>{client.current_weight ?? client.initial_weight ?? '—'} <small>kg</small></div><p style={muted}>Objetivo: {client.goal_weight ?? '—'} kg</p></div>
+      <div style={card}><div style={cardTitle}>DADOS</div><p style={text}><b>Altura:</b> {client.height ?? '—'} cm</p><p style={text}><b>Objetivo:</b> {client.goal ?? '—'}</p><p style={text}><b>Início:</b> {client.start_date ?? '—'}</p></div>
+      <div style={{...card,gridColumn:'1/-1'}}><div style={cardTitle}>EVOLUÇÃO DO PESO</div>{weights.length<2?<p style={muted}>Ainda não há registos suficientes para mostrar a evolução. {weights.length===1?'Existe 1 registo.':''}</p>:<div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{weights.map(w=><div key={w.id} style={weightPill}>{w.weight} kg <span>{w.recorded_at}</span></div>)}</div>}</div>
+    </div>}
+
+    {tab==='workout'&&<div style={{display:'grid',gap:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+        <div><div style={cardTitle}>O TEU PLANO DE TREINO</div><p style={{...muted,margin:0}}>Planos e exercícios atribuídos pelo teu treinador.</p></div>
+        <button onClick={loadWorkouts} disabled={loadingWorkouts} style={ghostButton}>{loadingWorkouts?'A CARREGAR…':'ATUALIZAR'}</button>
+      </div>
+      {loadingWorkouts&&<div style={card}>A carregar treinos…</div>}
+      {!loadingWorkouts&&workoutError&&<div style={errorStyle}>{workoutError}</div>}
+      {!loadingWorkouts&&!workoutError&&workouts.length===0&&<div style={card}><div style={cardTitle}>AINDA SEM TREINO</div><p style={muted}>Ainda não tens nenhum plano de treino atribuído. Quando o teu treinador o criar, aparecerá aqui automaticamente.</p></div>}
+      {!loadingWorkouts&&!workoutError&&workouts.map((workout:any,index:number)=>{
+        const exercises=exercisesByWorkout[String(workout.id)]||[]
+        return <div key={workout.id} style={card}>
+          <div style={eyebrow}>TREINO {String(index+1).padStart(2,'0')}</div>
+          <h2 style={{...title,fontSize:30,marginTop:7}}>{workout.name||workout.title||'Plano de treino'}</h2>
+          {workout.description&&<p style={{...muted,marginTop:0}}>{workout.description}</p>}
+          {exercises.length===0?<p style={muted}>Este plano ainda não tem exercícios.</p>:<div style={{display:'grid',gap:10,marginTop:18}}>
+            {exercises.map((exercise:any,exerciseIndex:number)=><div key={exercise.id} style={{border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.18)',padding:16}}>
+              <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                <div style={{fontFamily:"'League Spartan',sans-serif",fontSize:12,color:GOLD,minWidth:24}}>{String(exerciseIndex+1).padStart(2,'0')}</div>
+                <div style={{flex:1}}>
+                  <strong style={{fontFamily:"'League Spartan',sans-serif",fontSize:17,color:WHITE}}>{exercise.name||exercise.exercise_name||'Exercício'}</strong>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
+                    <span style={workoutMetric}><b>SÉRIES</b> {exercise.sets??'—'}</span>
+                    <span style={workoutMetric}><b>REPS</b> {exercise.reps??exercise.repetitions??'—'}</span>
+                    <span style={workoutMetric}><b>DESCANSO</b> {exercise.rest??exercise.rest_seconds??'—'}</span>
+                  </div>
+                  {exercise.notes&&<p style={{...muted,margin:'12px 0 0'}}>{exercise.notes}</p>}
+                </div>
+              </div>
+            </div>)}
+          </div>}
+        </div>
+      })}
+    </div>}
+  </div>
+}
 
 function Ebook() {
   const [current, setCurrent] = useState(0), [menuOpen,setMenuOpen]=useState(false), [scale,setScale]=useState(1)
@@ -410,6 +487,7 @@ const small:any={fontSize:11,color:'rgba(255,255,255,.4)',marginTop:4}
 const text:any={fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,255,.72)'}
 const bigNumber:any={fontFamily:"'League Spartan',sans-serif",fontSize:52,fontWeight:800,color:WHITE}
 const weightPill:any={border:'1px solid rgba(212,175,55,.22)',background:'rgba(212,175,55,.06)',padding:'10px 12px',fontFamily:"'League Spartan',sans-serif",color:WHITE}
+const workoutMetric:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.06)',padding:'7px 9px',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.75)'}
 const featureGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:10}
 const feature:any={border:'1px solid rgba(255,255,255,.07)',padding:16,fontFamily:"'Inter',sans-serif",fontSize:13,display:'flex',justifyContent:'space-between',gap:12}
 const arrowStyle:any={position:'fixed',top:'50%',transform:'translateY(-50%)',background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.25)',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,transition:'all .15s',zIndex:10}
