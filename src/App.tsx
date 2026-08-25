@@ -439,7 +439,7 @@ function CheckinManager({client,session,checkins,onRefresh}:{client:any,session:
   return <div style={{display:'grid',gap:12}}><div style={card}><div style={cardTitle}>REGISTAR CHECK-IN</div><form onSubmit={add} style={{display:'grid',gap:8}}><div style={formGrid}><input value={weight} onChange={e=>setWeight(e.target.value)} placeholder="Peso kg" type="number" step=".1" style={inputStyle}/><input value={training} onChange={e=>setTraining(e.target.value)} placeholder="Treino 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={nutrition} onChange={e=>setNutrition(e.target.value)} placeholder="Nutrição 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={sleep} onChange={e=>setSleep(e.target.value)} placeholder="Sono 1-10" type="number" min="1" max="10" style={inputStyle}/></div><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observações / feedback" style={{...inputStyle,minHeight:100,resize:'vertical'}}/><button style={goldButton}>GUARDAR CHECK-IN</button></form></div>{checkins.length===0?<div style={card}><p style={muted}>Ainda não existem check-ins.</p></div>:<div style={card}><div style={cardTitle}>HISTÓRICO</div>{checkins.map(c=><div key={c.id} style={row}><div><strong>{c.created_at?.slice(0,10)}</strong><div style={small}>Peso {c.weight??'—'} kg · Treino {c.training_rating??'—'}/10 · Nutrição {c.nutrition_rating??'—'}/10 · Sono {c.sleep_rating??'—'}/10</div>{c.notes&&<div style={small}>{c.notes}</div>}</div><button onClick={async()=>{await deleteCheckIn(session.access_token,c.id);onRefresh()}} style={dangerButton}>×</button></div>)}</div>}</div>
 }
 function ClientView({client,weights,session}:{client:any,weights:any[],session:Session}) {
-  const [tab,setTab]=useState<'profile'|'workout'|'nutrition'>('profile')
+  const [tab,setTab]=useState<'profile'|'workout'|'nutrition'|'checkin'>('profile')
   const [workouts,setWorkouts]=useState<any[]>([])
   const [exercisesByWorkout,setExercisesByWorkout]=useState<Record<string,any[]>>({})
   const [loadingWorkouts,setLoadingWorkouts]=useState(false)
@@ -448,6 +448,9 @@ function ClientView({client,weights,session}:{client:any,weights:any[],session:S
   const [mealsByPlan,setMealsByPlan]=useState<Record<string,any[]>>({})
   const [loadingNutrition,setLoadingNutrition]=useState(false)
   const [nutritionError,setNutritionError]=useState('')
+  const [clientCheckins,setClientCheckins]=useState<any[]>([])
+  const [loadingCheckins,setLoadingCheckins]=useState(false)
+  const [checkinError,setCheckinError]=useState('')
 
   const loadWorkouts=useCallback(async()=>{
     if(!client?.id) return
@@ -489,8 +492,17 @@ function ClientView({client,weights,session}:{client:any,weights:any[],session:S
     }
   },[client?.id,session.access_token])
 
+  const loadClientCheckins=useCallback(async()=>{
+    if(!client?.id)return
+    setLoadingCheckins(true);setCheckinError('')
+    try{setClientCheckins(await getCheckIns(session.access_token,client.id))}
+    catch(e:any){setCheckinError(e.message||'Não foi possível carregar os teus check-ins.')}
+    finally{setLoadingCheckins(false)}
+  },[client?.id,session.access_token])
+
   useEffect(()=>{loadWorkouts()},[loadWorkouts])
   useEffect(()=>{loadNutrition()},[loadNutrition])
+  useEffect(()=>{loadClientCheckins()},[loadClientCheckins])
 
   if(!client) return <div style={{...card,marginTop:28}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>
 
@@ -499,6 +511,7 @@ function ClientView({client,weights,session}:{client:any,weights:any[],session:S
       <button onClick={()=>setTab('profile')} style={{...ghostButton,color:tab==='profile'?GOLD:undefined,borderColor:tab==='profile'?'rgba(212,175,55,.35)':undefined}}>PERFIL</button>
       <button onClick={()=>setTab('workout')} style={{...ghostButton,color:tab==='workout'?GOLD:undefined,borderColor:tab==='workout'?'rgba(212,175,55,.35)':undefined}}>TREINO</button>
       <button onClick={()=>setTab('nutrition')} style={{...ghostButton,color:tab==='nutrition'?GOLD:undefined,borderColor:tab==='nutrition'?'rgba(212,175,55,.35)':undefined}}>NUTRIÇÃO</button>
+      <button onClick={()=>setTab('checkin')} style={{...ghostButton,color:tab==='checkin'?GOLD:undefined,borderColor:tab==='checkin'?'rgba(212,175,55,.35)':undefined}}>CHECK-IN</button>
     </div>
 
     {tab==='profile'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18}}>
@@ -583,7 +596,65 @@ function ClientView({client,weights,session}:{client:any,weights:any[],session:S
         </div>
       })}
     </div>}
+
+    {tab==='checkin'&&<ClientCheckinView client={client} session={session} checkins={clientCheckins} loading={loadingCheckins} error={checkinError} onRefresh={loadClientCheckins}/>}
   </div>
+}
+
+function ClientCheckinView({client,session,checkins,loading,error,onRefresh}:{client:any,session:Session,checkins:any[],loading:boolean,error:string,onRefresh:()=>Promise<void>}){
+  const [weight,setWeight]=useState(client.current_weight?.toString()||'')
+  const [training,setTraining]=useState('')
+  const [nutrition,setNutrition]=useState('')
+  const [sleep,setSleep]=useState('')
+  const [notes,setNotes]=useState('')
+  const [saving,setSaving]=useState(false)
+  const [message,setMessage]=useState('')
+  const ratings=Array.from({length:10},(_,i)=>i+1)
+
+  const submit=async(e:React.FormEvent)=>{
+    e.preventDefault();setSaving(true);setMessage('')
+    try{
+      if(!training||!nutrition||!sleep)throw new Error('Avalia o treino, a alimentação e o sono antes de enviar.')
+      await createCheckIn(session.access_token,{client_id:client.id,weight:weight?Number(weight):null,training_rating:Number(training),nutrition_rating:Number(nutrition),sleep_rating:Number(sleep),notes:notes.trim()||null})
+      setTraining('');setNutrition('');setSleep('');setNotes('')
+      setMessage('Check-in enviado com sucesso. O teu treinador já o pode consultar.')
+      await onRefresh()
+    }catch(e:any){setMessage(e.message||'Não foi possível enviar o check-in.')}finally{setSaving(false)}
+  }
+
+  return <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:16,alignItems:'start'}}>
+    <div style={card}>
+      <div style={eyebrow}>ACOMPANHAMENTO SEMANAL</div>
+      <h2 style={{...title,fontSize:30,marginBottom:8}}>Como correu a tua semana?</h2>
+      <p style={{...muted,marginTop:0}}>Responde com sinceridade. Esta informação ajuda o teu treinador a ajustar o plano.</p>
+      <form onSubmit={submit} style={{display:'grid',gap:16,marginTop:24}}>
+        <label style={labelStyle}>PESO ATUAL (KG)<input value={weight} onChange={e=>setWeight(e.target.value)} type="number" min="0" step=".1" placeholder="Ex.: 74.5" style={{...inputStyle,width:'100%',marginTop:7}}/></label>
+        <RatingField label="COMO CORREU O TREINO?" value={training} onChange={setTraining} ratings={ratings}/>
+        <RatingField label="COMO CORREU A ALIMENTAÇÃO?" value={nutrition} onChange={setNutrition} ratings={ratings}/>
+        <RatingField label="COMO ESTEVE O SONO?" value={sleep} onChange={setSleep} ratings={ratings}/>
+        <label style={labelStyle}>OBSERVAÇÕES<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Dificuldades, progressos, energia, fome, dores ou algo que queiras partilhar…" style={{...inputStyle,width:'100%',minHeight:110,resize:'vertical',marginTop:7}}/></label>
+        {message&&<div style={message.includes('sucesso')?successStyle:errorStyle}>{message}</div>}
+        <button disabled={saving} style={goldButton}>{saving?'A ENVIAR…':'ENVIAR CHECK-IN'}</button>
+      </form>
+    </div>
+
+    <div style={{display:'grid',gap:12}}>
+      <div style={checkinTip}><div style={cardTitle}>ESCALA DE AVALIAÇÃO</div><p style={{...muted,margin:0}}><b style={{color:WHITE}}>1–3</b> Difícil · <b style={{color:WHITE}}>4–6</b> Razoável · <b style={{color:WHITE}}>7–8</b> Bom · <b style={{color:WHITE}}>9–10</b> Excelente</p></div>
+      <div style={card}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}><div style={cardTitle}>HISTÓRICO</div><button onClick={onRefresh} disabled={loading} style={ghostButton}>ATUALIZAR</button></div>
+        {loading?<p style={muted}>A carregar check-ins…</p>:error?<div style={errorStyle}>{error}</div>:checkins.length===0?<p style={muted}>Ainda não enviaste nenhum check-in.</p>:<div style={{display:'grid',gap:9}}>{checkins.map((item,index)=><div key={item.id} style={clientCheckinCard}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:10}}><strong style={{fontFamily:"'League Spartan',sans-serif"}}>CHECK-IN {String(checkins.length-index).padStart(2,'0')}</strong><span style={small}>{item.created_at?.slice(0,10)||'—'}</span></div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}><span style={checkinScore}>TREINO <b>{item.training_rating??'—'}/10</b></span><span style={checkinScore}>NUTRIÇÃO <b>{item.nutrition_rating??'—'}/10</b></span><span style={checkinScore}>SONO <b>{item.sleep_rating??'—'}/10</b></span></div>
+          <div style={{...small,marginTop:9}}>Peso: {item.weight??'—'} kg</div>
+          {item.notes&&<p style={{...muted,margin:'9px 0 0'}}>{item.notes}</p>}
+        </div>)}</div>}
+      </div>
+    </div>
+  </div>
+}
+
+function RatingField({label,value,onChange,ratings}:{label:string,value:string,onChange:(value:string)=>void,ratings:number[]}){
+  return <div><div style={labelStyle}>{label}</div><div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5,marginTop:8}}>{ratings.map(r=><button key={r} type="button" onClick={()=>onChange(String(r))} aria-pressed={value===String(r)} style={{...ratingButton,background:value===String(r)?GOLD:'rgba(255,255,255,.035)',borderColor:value===String(r)?GOLD:'rgba(255,255,255,.1)',color:value===String(r)?'#090909':'rgba(255,255,255,.65)'}}>{r}</button>)}</div></div>
 }
 
 function Ebook() {
@@ -658,6 +729,10 @@ const totalPill:any={border:'1px solid rgba(212,175,55,.15)',background:'rgba(21
 const adminMealCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14,display:'flex',alignItems:'flex-start',gap:13}
 const mealOrder:any={width:30,height:30,border:'1px solid rgba(212,175,55,.24)',display:'grid',placeItems:'center',fontFamily:"'League Spartan',sans-serif",fontSize:11,color:GOLD,flex:'0 0 auto'}
 const emptyAdminState:any={...card,textAlign:'center',display:'grid',justifyItems:'center',gap:8,padding:'46px 24px'}
+const ratingButton:any={minHeight:40,border:'1px solid rgba(255,255,255,.1)',fontFamily:"'League Spartan',sans-serif",fontSize:13,fontWeight:800,cursor:'pointer'}
+const checkinTip:any={background:'linear-gradient(135deg,rgba(212,175,55,.09),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:20}
+const clientCheckinCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14}
+const checkinScore:any={border:'1px solid rgba(212,175,55,.15)',background:'rgba(212,175,55,.045)',padding:'7px 8px',fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.06em',color:'rgba(255,255,255,.55)'}
 const featureGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:10}
 const feature:any={border:'1px solid rgba(255,255,255,.07)',padding:16,fontFamily:"'Inter',sans-serif",fontSize:13,display:'flex',justifyContent:'space-between',gap:12}
 const arrowStyle:any={position:'fixed',top:'50%',transform:'translateY(-50%)',background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.25)',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,transition:'all .15s',zIndex:10}
