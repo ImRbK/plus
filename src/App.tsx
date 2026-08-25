@@ -346,11 +346,15 @@ function CheckinManager({client,session,checkins,onRefresh}:{client:any,session:
   return <div style={{display:'grid',gap:12}}><div style={card}><div style={cardTitle}>REGISTAR CHECK-IN</div><form onSubmit={add} style={{display:'grid',gap:8}}><div style={formGrid}><input value={weight} onChange={e=>setWeight(e.target.value)} placeholder="Peso kg" type="number" step=".1" style={inputStyle}/><input value={training} onChange={e=>setTraining(e.target.value)} placeholder="Treino 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={nutrition} onChange={e=>setNutrition(e.target.value)} placeholder="Nutrição 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={sleep} onChange={e=>setSleep(e.target.value)} placeholder="Sono 1-10" type="number" min="1" max="10" style={inputStyle}/></div><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observações / feedback" style={{...inputStyle,minHeight:100,resize:'vertical'}}/><button style={goldButton}>GUARDAR CHECK-IN</button></form></div>{checkins.length===0?<div style={card}><p style={muted}>Ainda não existem check-ins.</p></div>:<div style={card}><div style={cardTitle}>HISTÓRICO</div>{checkins.map(c=><div key={c.id} style={row}><div><strong>{c.created_at?.slice(0,10)}</strong><div style={small}>Peso {c.weight??'—'} kg · Treino {c.training_rating??'—'}/10 · Nutrição {c.nutrition_rating??'—'}/10 · Sono {c.sleep_rating??'—'}/10</div>{c.notes&&<div style={small}>{c.notes}</div>}</div><button onClick={async()=>{await deleteCheckIn(session.access_token,c.id);onRefresh()}} style={dangerButton}>×</button></div>)}</div>}</div>
 }
 function ClientView({client,weights,session}:{client:any,weights:any[],session:Session}) {
-  const [tab,setTab]=useState<'profile'|'workout'>('profile')
+  const [tab,setTab]=useState<'profile'|'workout'|'nutrition'>('profile')
   const [workouts,setWorkouts]=useState<any[]>([])
   const [exercisesByWorkout,setExercisesByWorkout]=useState<Record<string,any[]>>({})
   const [loadingWorkouts,setLoadingWorkouts]=useState(false)
   const [workoutError,setWorkoutError]=useState('')
+  const [nutritionPlans,setNutritionPlans]=useState<any[]>([])
+  const [mealsByPlan,setMealsByPlan]=useState<Record<string,any[]>>({})
+  const [loadingNutrition,setLoadingNutrition]=useState(false)
+  const [nutritionError,setNutritionError]=useState('')
 
   const loadWorkouts=useCallback(async()=>{
     if(!client?.id) return
@@ -372,7 +376,28 @@ function ClientView({client,weights,session}:{client:any,weights:any[],session:S
     }
   },[client?.id,session.access_token])
 
+  const loadNutrition=useCallback(async()=>{
+    if(!client?.id) return
+    setLoadingNutrition(true)
+    setNutritionError('')
+    try {
+      const plans=await getNutritionPlans(session.access_token,client.id)
+      const mealLists=await Promise.all(
+        plans.map((plan:any)=>getMeals(session.access_token,plan.id))
+      )
+      const grouped:Record<string,any[]>={}
+      plans.forEach((plan:any,index:number)=>{grouped[String(plan.id)]=mealLists[index]||[]})
+      setNutritionPlans(plans)
+      setMealsByPlan(grouped)
+    } catch(e:any) {
+      setNutritionError(e.message||'Não foi possível carregar o teu plano alimentar.')
+    } finally {
+      setLoadingNutrition(false)
+    }
+  },[client?.id,session.access_token])
+
   useEffect(()=>{loadWorkouts()},[loadWorkouts])
+  useEffect(()=>{loadNutrition()},[loadNutrition])
 
   if(!client) return <div style={{...card,marginTop:28}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>
 
@@ -380,6 +405,7 @@ function ClientView({client,weights,session}:{client:any,weights:any[],session:S
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
       <button onClick={()=>setTab('profile')} style={{...ghostButton,color:tab==='profile'?GOLD:undefined,borderColor:tab==='profile'?'rgba(212,175,55,.35)':undefined}}>PERFIL</button>
       <button onClick={()=>setTab('workout')} style={{...ghostButton,color:tab==='workout'?GOLD:undefined,borderColor:tab==='workout'?'rgba(212,175,55,.35)':undefined}}>TREINO</button>
+      <button onClick={()=>setTab('nutrition')} style={{...ghostButton,color:tab==='nutrition'?GOLD:undefined,borderColor:tab==='nutrition'?'rgba(212,175,55,.35)':undefined}}>NUTRIÇÃO</button>
     </div>
 
     {tab==='profile'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18}}>
@@ -414,6 +440,49 @@ function ClientView({client,weights,session}:{client:any,weights:any[],session:S
                     <span style={workoutMetric}><b>DESCANSO</b> {exercise.rest??exercise.rest_seconds??'—'}</span>
                   </div>
                   {exercise.notes&&<p style={{...muted,margin:'12px 0 0'}}>{exercise.notes}</p>}
+                </div>
+              </div>
+            </div>)}
+          </div>}
+        </div>
+      })}
+    </div>}
+
+    {tab==='nutrition'&&<div style={{display:'grid',gap:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+        <div><div style={cardTitle}>O TEU PLANO ALIMENTAR</div><p style={{...muted,margin:0}}>Objetivos diários e refeições preparados pelo teu treinador.</p></div>
+        <button onClick={loadNutrition} disabled={loadingNutrition} style={ghostButton}>{loadingNutrition?'A CARREGAR…':'ATUALIZAR'}</button>
+      </div>
+      {loadingNutrition&&<div style={card}>A carregar nutrição…</div>}
+      {!loadingNutrition&&nutritionError&&<div style={errorStyle}>{nutritionError}</div>}
+      {!loadingNutrition&&!nutritionError&&nutritionPlans.length===0&&<div style={card}><div style={cardTitle}>AINDA SEM PLANO ALIMENTAR</div><p style={muted}>Ainda não tens um plano alimentar atribuído. Quando o teu treinador o criar, aparecerá aqui automaticamente.</p></div>}
+      {!loadingNutrition&&!nutritionError&&nutritionPlans.map((plan:any,index:number)=>{
+        const meals=mealsByPlan[String(plan.id)]||[]
+        return <div key={plan.id} style={card}>
+          <div style={eyebrow}>PLANO {String(index+1).padStart(2,'0')}</div>
+          <h2 style={{...title,fontSize:30,marginTop:7}}>{plan.name||'Plano alimentar'}</h2>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:8,margin:'18px 0 22px'}}>
+            <div style={nutritionSummary}><b>{plan.calories??'—'}</b><span>KCAL</span></div>
+            <div style={nutritionSummary}><b>{plan.protein??'—'} g</b><span>PROTEÍNA</span></div>
+            <div style={nutritionSummary}><b>{plan.carbohydrates??'—'} g</b><span>HIDRATOS</span></div>
+            <div style={nutritionSummary}><b>{plan.fats??'—'} g</b><span>GORDURA</span></div>
+          </div>
+          {meals.length===0?<p style={muted}>Este plano ainda não tem refeições.</p>:<div style={{display:'grid',gap:10}}>
+            {meals.map((meal:any,mealIndex:number)=><div key={meal.id} style={{border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.18)',padding:16}}>
+              <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                <div style={{fontFamily:"'League Spartan',sans-serif",fontSize:12,color:GOLD,minWidth:24}}>{String(mealIndex+1).padStart(2,'0')}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,flexWrap:'wrap'}}>
+                    <strong style={{fontFamily:"'League Spartan',sans-serif",fontSize:17,color:WHITE}}>{meal.name||'Refeição'}</strong>
+                    <span style={{...small,color:GOLD}}>{meal.calories??'—'} kcal</span>
+                  </div>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
+                    <span style={workoutMetric}><b>P</b> {meal.protein??'—'} g</span>
+                    <span style={workoutMetric}><b>HC</b> {meal.carbohydrates??'—'} g</span>
+                    <span style={workoutMetric}><b>G</b> {meal.fats??'—'} g</span>
+                  </div>
+                  {meal.ingredients&&<div style={{marginTop:14}}><div style={labelStyle}>ALIMENTOS / QUANTIDADES</div><p style={{...text,whiteSpace:'pre-wrap',margin:'7px 0 0'}}>{meal.ingredients}</p></div>}
+                  {meal.preparation&&<div style={{marginTop:14}}><div style={labelStyle}>PREPARAÇÃO</div><p style={{...muted,whiteSpace:'pre-wrap',margin:'7px 0 0'}}>{meal.preparation}</p></div>}
                 </div>
               </div>
             </div>)}
@@ -488,6 +557,7 @@ const text:any={fontFamily:"'Inter',sans-serif",fontSize:13,color:'rgba(255,255,
 const bigNumber:any={fontFamily:"'League Spartan',sans-serif",fontSize:52,fontWeight:800,color:WHITE}
 const weightPill:any={border:'1px solid rgba(212,175,55,.22)',background:'rgba(212,175,55,.06)',padding:'10px 12px',fontFamily:"'League Spartan',sans-serif",color:WHITE}
 const workoutMetric:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.06)',padding:'7px 9px',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.75)'}
+const nutritionSummary:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.05)',padding:'14px 12px',display:'grid',gap:5,textAlign:'center',fontFamily:"'League Spartan',sans-serif",color:WHITE}
 const featureGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:10}
 const feature:any={border:'1px solid rgba(255,255,255,.07)',padding:16,fontFamily:"'Inter',sans-serif",fontSize:13,display:'flex',justifyContent:'space-between',gap:12}
 const arrowStyle:any={position:'fixed',top:'50%',transform:'translateY(-50%)',background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.25)',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,transition:'all .15s',zIndex:10}
