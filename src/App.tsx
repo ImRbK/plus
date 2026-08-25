@@ -370,25 +370,94 @@ function WeightManager({client,session,weights,onRefresh}:{client:any,session:Se
 }
 
 function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:Session,workouts:any[],onRefresh:()=>void}) {
-  const [name,setName]=useState(''),[description,setDescription]=useState(''),[open,setOpen]=useState<number|null>(null),[ex,setEx]=useState<Record<number,any[]>>({})
-  const add=async(e:React.FormEvent)=>{e.preventDefault();await createWorkout(session.access_token,{client_id:client.id,name:name.trim(),description:description.trim()||null});setName('');setDescription('');onRefresh()}
-  const loadEx=async(id:number)=>{setOpen(id);setEx({...ex,[id]:await getWorkoutExercises(session.access_token,id)})}
-  return <div style={{display:'grid',gap:12}}>
-    <div style={card}><div style={cardTitle}>NOVO PLANO DE TREINO</div><form onSubmit={add} style={{display:'grid',gap:8}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nome (ex.: Treino A — Peito/Tríceps)" required style={inputStyle}/><input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Descrição" style={inputStyle}/><button style={goldButton}>CRIAR TREINO</button></form></div>
-    {workouts.length===0?<div style={card}><p style={muted}>Ainda não existem treinos.</p></div>:workouts.map(w=><div key={w.id} style={card}>
-      <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center'}}><div><div style={cardTitle}>{w.name}</div><p style={{...muted,margin:0}}>{w.description||'Sem descrição.'}</p></div><div style={{display:'flex',gap:8}}><button onClick={()=>loadEx(w.id)} style={ghostButton}>{open===w.id?'FECHAR':'EXERCÍCIOS'}</button><button onClick={async()=>{await deleteWorkout(session.access_token,w.id);onRefresh()}} style={dangerButton}>ELIMINAR</button></div></div>
-      {open===w.id && <ExerciseEditor session={session} workout={w} exercises={ex[w.id]||[]} onRefresh={()=>loadEx(w.id)}/>}
-    </div>)}
+  const [name,setName]=useState(''),[description,setDescription]=useState('')
+  const [formOpen,setFormOpen]=useState(workouts.length===0),[open,setOpen]=useState<number|null>(null),[ex,setEx]=useState<Record<number,any[]>>({})
+  const [saving,setSaving]=useState(false),[message,setMessage]=useState('')
+
+  const resetForm=()=>{setName('');setDescription('')}
+  const add=async(e:React.FormEvent)=>{
+    e.preventDefault();setSaving(true);setMessage('')
+    try{await createWorkout(session.access_token,{client_id:client.id,name:name.trim(),description:description.trim()||null});resetForm();setFormOpen(false);setMessage('Treino criado com sucesso.');onRefresh()}
+    catch(e:any){setMessage(e.message||'Não foi possível criar o treino.')}finally{setSaving(false)}
+  }
+  const loadEx=async(id:number)=>{
+    if(open===id){setOpen(null);return}
+    setOpen(id);setMessage('')
+    try{const rows=await getWorkoutExercises(session.access_token,id);setEx(current=>({...current,[id]:rows}))}
+    catch(e:any){setMessage(e.message||'Não foi possível carregar os exercícios.')}
+  }
+  const removeWorkout=async(workout:any)=>{
+    if(!window.confirm(`Eliminar “${workout.name}” e os exercícios associados?`))return
+    try{await deleteWorkout(session.access_token,workout.id);if(open===workout.id)setOpen(null);onRefresh()}
+    catch(e:any){setMessage(e.message||'Não foi possível eliminar o treino.')}
+  }
+  const duplicateWorkout=(workout:any)=>{setName(`${workout.name} — cópia`);setDescription(workout.description||'');setFormOpen(true);window.scrollTo({top:0,behavior:'smooth'})}
+
+  return <div style={{display:'grid',gap:16}}>
+    <div style={trainingAdminHero}>
+      <div><div style={eyebrow}>PROGRAMAÇÃO DE TREINO</div><h3 style={{...title,fontSize:30,marginBottom:8}}>Treinos de {client.full_name?.split(' ')[0]||'cliente'}</h3><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><span style={adminInfoPill}>PESO <b>{client.current_weight??'—'} kg</b></span><span style={adminInfoPill}>OBJETIVO <b>{client.goal_weight??'—'} kg</b></span><span style={adminInfoPill}>TREINOS <b>{workouts.length}</b></span></div></div>
+      <button onClick={()=>{setFormOpen(v=>!v);setMessage('')}} style={goldButton}>{formOpen?'FECHAR':'＋ NOVO TREINO'}</button>
+    </div>
+
+    {message&&<div style={message.includes('sucesso')?successStyle:errorStyle}>{message}</div>}
+
+    {formOpen&&<div style={{...card,borderColor:'rgba(212,175,55,.25)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}><div><div style={cardTitle}>NOVO TREINO</div><p style={{...muted,marginTop:-8}}>Cria a sessão e adiciona os exercícios logo a seguir.</p></div><button type="button" onClick={()=>{resetForm();setFormOpen(false)}} style={closeButton}>×</button></div>
+      <form onSubmit={add} style={{display:'grid',gap:10,marginTop:16}}>
+        <label style={labelStyle}>NOME DO TREINO<input value={name} onChange={e=>setName(e.target.value)} placeholder="Ex.: Treino A — Peito e Tríceps" required style={{...inputStyle,width:'100%',marginTop:6}}/></label>
+        <label style={labelStyle}>DESCRIÇÃO / ORIENTAÇÃO<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Ex.: Foco em força, controlar a fase excêntrica e não treinar até à falha." style={{...inputStyle,width:'100%',minHeight:82,resize:'vertical',marginTop:6}}/></label>
+        <button disabled={saving} style={goldButton}>{saving?'A CRIAR…':'CRIAR TREINO E ADICIONAR EXERCÍCIOS'}</button>
+      </form>
+    </div>}
+
+    {workouts.length===0&&!formOpen&&<div style={emptyAdminState}><div style={{fontSize:34}}>＋</div><div style={cardTitle}>AINDA NÃO EXISTEM TREINOS</div><p style={muted}>Cria o primeiro treino personalizado deste cliente.</p><button onClick={()=>setFormOpen(true)} style={goldButton}>CRIAR PRIMEIRO TREINO</button></div>}
+
+    {workouts.map((workout,index)=>{
+      const exercises=ex[workout.id]||[]
+      const totalSets=exercises.reduce((sum,item)=>sum+(Number(item.sets)||0),0)
+      return <div key={workout.id} style={{...card,padding:0,overflow:'hidden'}}>
+        <div style={{height:3,background:index===0?GOLD:'rgba(255,255,255,.12)'}}/>
+        <div style={{padding:24}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap'}}>
+            <div><div style={{...eyebrow,marginTop:0}}>TREINO {String(index+1).padStart(2,'0')}</div><h3 style={{...title,fontSize:27,marginBottom:5}}>{workout.name}</h3><p style={{...muted,margin:0}}>{workout.description||'Sem orientação adicional.'}</p></div>
+            <div style={{display:'flex',gap:7,flexWrap:'wrap'}}><button onClick={()=>duplicateWorkout(workout)} style={ghostButton}>DUPLICAR</button><button onClick={()=>loadEx(workout.id)} style={{...goldButton,padding:'10px 13px'}}>{open===workout.id?'FECHAR TREINO':'GERIR EXERCÍCIOS'}</button><button onClick={()=>removeWorkout(workout)} style={dangerButton}>ELIMINAR</button></div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8,marginTop:20}}><div style={trainingStat}><span>EXERCÍCIOS</span><b>{open===workout.id?exercises.length:'—'}</b></div><div style={trainingStat}><span>SÉRIES TOTAIS</span><b>{open===workout.id?totalSets:'—'}</b></div><div style={trainingStat}><span>ESTADO</span><b style={{fontSize:14,color:open===workout.id&&exercises.length>0?'#81c990':'#e4bd54'}}>{open===workout.id?(exercises.length?'CONFIGURADO':'INCOMPLETO'):'ABRIR'}</b></div></div>
+          {open===workout.id&&<div style={{marginTop:22,paddingTop:22,borderTop:'1px solid rgba(255,255,255,.08)'}}><ExerciseEditor session={session} workout={workout} exercises={exercises} onRefresh={()=>loadExercisesAfterChange(workout.id,setEx,session.access_token)}/></div>}
+        </div>
+      </div>
+    })}
   </div>
 }
 
 function ExerciseEditor({session,workout,exercises,onRefresh}:{session:Session,workout:any,exercises:any[],onRefresh:()=>void}) {
   const [name,setName]=useState(''),[sets,setSets]=useState(''),[reps,setReps]=useState(''),[rest,setRest]=useState(''),[notes,setNotes]=useState('')
-  const add=async(e:React.FormEvent)=>{e.preventDefault();await createExercise(session.access_token,{workout_id:workout.id,name:name.trim(),sets:sets?Number(sets):null,reps:reps||null,rest_seconds:rest?Number(rest):null,notes:notes||null,exercise_order:exercises.length});setName('');setSets('');setReps('');setRest('');setNotes('');onRefresh()}
-  return <div style={{marginTop:20,paddingTop:18,borderTop:'1px solid rgba(255,255,255,.08)'}}><div style={cardTitle}>EXERCÍCIOS</div>
-    <div style={{display:'grid',gap:6,marginBottom:14}}>{exercises.map(x=><div key={x.id} style={row}><div><strong>{x.name}</strong><div style={small}>{x.sets??'—'} séries × {x.reps??'—'} reps {x.rest_seconds?` · ${x.rest_seconds}s descanso`:''}</div>{x.notes&&<div style={small}>{x.notes}</div>}</div><button onClick={async()=>{await deleteExercise(session.access_token,x.id);onRefresh()}} style={dangerButton}>×</button></div>)}</div>
-    <form onSubmit={add} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:8}}><input value={name} onChange={e=>setName(e.target.value)} placeholder="Exercício" required style={inputStyle}/><input value={sets} onChange={e=>setSets(e.target.value)} placeholder="Séries" type="number" style={inputStyle}/><input value={reps} onChange={e=>setReps(e.target.value)} placeholder="Reps" style={inputStyle}/><input value={rest} onChange={e=>setRest(e.target.value)} placeholder="Desc. s" type="number" style={inputStyle}/><input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Notas técnicas" style={{...inputStyle,gridColumn:'1/-1'}}/><button style={{...goldButton,gridColumn:'1/-1'}}>ADICIONAR EXERCÍCIO</button></form>
+  const [formOpen,setFormOpen]=useState(exercises.length===0),[saving,setSaving]=useState(false),[error,setError]=useState('')
+  const add=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setError('');try{await createExercise(session.access_token,{workout_id:workout.id,name:name.trim(),sets:sets?Number(sets):null,reps:reps||null,rest_seconds:rest?Number(rest):null,notes:notes.trim()||null,exercise_order:exercises.length});setName('');setSets('');setReps('');setRest('');setNotes('');setFormOpen(false);onRefresh()}catch(e:any){setError(e.message||'Não foi possível adicionar o exercício.')}finally{setSaving(false)}}
+  const remove=async(exercise:any)=>{if(!window.confirm(`Eliminar o exercício “${exercise.name}”?`))return;try{await deleteExercise(session.access_token,exercise.id);onRefresh()}catch(e:any){setError(e.message||'Não foi possível eliminar o exercício.')}}
+  const duplicate=(exercise:any)=>{setName(`${exercise.name} — variação`);setSets(exercise.sets?.toString()||'');setReps(exercise.reps||'');setRest(exercise.rest_seconds?.toString()||'');setNotes(exercise.notes||'');setFormOpen(true)}
+  return <div>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}><div><div style={cardTitle}>EXERCÍCIOS</div><p style={{...muted,margin:'-9px 0 0'}}>{exercises.length} exercício{exercises.length===1?'':'s'} · {exercises.reduce((sum,item)=>sum+(Number(item.sets)||0),0)} séries no total</p></div><button onClick={()=>setFormOpen(v=>!v)} style={ghostButton}>{formOpen?'FECHAR':'＋ ADICIONAR EXERCÍCIO'}</button></div>
+    {error&&<div style={{...errorStyle,marginBottom:12}}>{error}</div>}
+    {exercises.length===0&&!formOpen&&<p style={muted}>Ainda não existem exercícios neste treino.</p>}
+    <div style={{display:'grid',gap:9}}>{exercises.map((exercise,index)=><div key={exercise.id} style={adminExerciseCard}>
+      <div style={exerciseOrder}>{String(index+1).padStart(2,'0')}</div>
+      <div style={{flex:1,minWidth:0}}><strong style={{fontFamily:"'League Spartan',sans-serif",fontSize:16}}>{exercise.name}</strong><div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:9}}><span style={exerciseMetric}><b>{exercise.sets??'—'}</b> SÉRIES</span><span style={exerciseMetric}><b>{exercise.reps??'—'}</b> REPS</span><span style={exerciseMetric}><b>{exercise.rest_seconds??'—'}s</b> DESCANSO</span></div>{exercise.notes&&<p style={{...muted,margin:'10px 0 0'}}>{exercise.notes}</p>}</div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button onClick={()=>duplicate(exercise)} style={ghostButton}>DUPLICAR</button><button onClick={()=>remove(exercise)} style={dangerButton}>ELIMINAR</button></div>
+    </div>)}</div>
+    {formOpen&&<form onSubmit={add} style={{display:'grid',gap:9,marginTop:16,padding:18,border:'1px solid rgba(212,175,55,.2)',background:'rgba(212,175,55,.035)'}}>
+      <div style={cardTitle}>NOVO EXERCÍCIO</div>
+      <label style={labelStyle}>NOME<input value={name} onChange={e=>setName(e.target.value)} placeholder="Ex.: Supino inclinado com halteres" required style={{...inputStyle,width:'100%',marginTop:6}}/></label>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8}}><label style={labelStyle}>SÉRIES<input value={sets} onChange={e=>setSets(e.target.value)} placeholder="4" type="number" min="1" style={{...inputStyle,width:'100%',marginTop:6}}/></label><label style={labelStyle}>REPETIÇÕES<input value={reps} onChange={e=>setReps(e.target.value)} placeholder="8–12" style={{...inputStyle,width:'100%',marginTop:6}}/></label><label style={labelStyle}>DESCANSO (S)<input value={rest} onChange={e=>setRest(e.target.value)} placeholder="90" type="number" min="0" style={{...inputStyle,width:'100%',marginTop:6}}/></label></div>
+      <label style={labelStyle}>NOTAS TÉCNICAS<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Execução, intensidade, cadência ou alternativas…" style={{...inputStyle,width:'100%',minHeight:78,resize:'vertical',marginTop:6}}/></label>
+      <button disabled={saving} style={goldButton}>{saving?'A GUARDAR…':'GUARDAR EXERCÍCIO'}</button>
+    </form>}
   </div>
+}
+
+async function loadExercisesAfterChange(workoutId:number,setExercises:React.Dispatch<React.SetStateAction<Record<number,any[]>>>,token:string){
+  const rows=await getWorkoutExercises(token,workoutId)
+  setExercises(current=>({...current,[workoutId]:rows}))
 }
 
 function NutritionManager({client,session,plans,onRefresh}:{client:any,session:Session,plans:any[],onRefresh:()=>void}) {
@@ -793,7 +862,12 @@ const weightPill:any={border:'1px solid rgba(212,175,55,.22)',background:'rgba(2
 const workoutMetric:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.06)',padding:'7px 9px',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.75)'}
 const nutritionSummary:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.05)',padding:'14px 12px',display:'grid',gap:5,textAlign:'center',fontFamily:"'League Spartan',sans-serif",color:WHITE}
 const nutritionAdminHero:any={background:'linear-gradient(135deg,rgba(212,175,55,.10),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:24,display:'flex',justifyContent:'space-between',alignItems:'center',gap:20,flexWrap:'wrap'}
+const trainingAdminHero:any={background:'linear-gradient(135deg,rgba(212,175,55,.10),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:24,display:'flex',justifyContent:'space-between',alignItems:'center',gap:20,flexWrap:'wrap'}
 const adminInfoPill:any={border:'1px solid rgba(255,255,255,.09)',background:'rgba(0,0,0,.22)',padding:'8px 10px',fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.08em',color:'rgba(255,255,255,.5)'}
+const trainingStat:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:13,display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.1em',color:'rgba(255,255,255,.45)'}
+const adminExerciseCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14,display:'flex',alignItems:'flex-start',gap:13,flexWrap:'wrap'}
+const exerciseOrder:any={width:30,height:30,border:'1px solid rgba(212,175,55,.24)',display:'grid',placeItems:'center',fontFamily:"'League Spartan',sans-serif",fontSize:11,color:GOLD,flex:'0 0 auto'}
+const exerciseMetric:any={border:'1px solid rgba(212,175,55,.14)',background:'rgba(212,175,55,.04)',padding:'6px 8px',fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.05em',color:'rgba(255,255,255,.5)'}
 const adminMacroCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14,display:'grid',gridTemplateColumns:'1fr auto',alignItems:'end',gap:4,fontFamily:"'League Spartan',sans-serif"}
 const totalPill:any={border:'1px solid rgba(212,175,55,.15)',background:'rgba(212,175,55,.045)',padding:'9px 10px',fontFamily:"'Inter',sans-serif",fontSize:10,color:'rgba(255,255,255,.65)',textAlign:'center'}
 const adminMealCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14,display:'flex',alignItems:'flex-start',gap:13}
