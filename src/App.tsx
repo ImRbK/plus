@@ -793,31 +793,34 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       {!loadingNutrition&&!nutritionError&&nutritionPlans.length===0&&<div style={card}><div style={cardTitle}>AINDA SEM PLANO ALIMENTAR</div><p style={muted}>Ainda não tens um plano alimentar atribuído. Quando o teu treinador o criar, aparecerá aqui automaticamente.</p></div>}
       {!loadingNutrition&&!nutritionError&&nutritionPlans.map((plan:any,index:number)=>{
         const meals=mealsByPlan[String(plan.id)]||[]
-        return <div key={plan.id} style={card}>
-          <div style={eyebrow}>PLANO {String(index+1).padStart(2,'0')}</div>
-          <h2 style={{...title,fontSize:30,marginTop:7}}>{plan.name||'Plano alimentar'}</h2>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(115px,1fr))',gap:8,margin:'18px 0 22px'}}>
-            <div style={nutritionSummary}><b>{plan.calories??'—'}</b><span>KCAL</span></div>
-            <div style={nutritionSummary}><b>{plan.protein??'—'} g</b><span>PROTEÍNA</span></div>
-            <div style={nutritionSummary}><b>{plan.carbohydrates??'—'} g</b><span>HIDRATOS</span></div>
-            <div style={nutritionSummary}><b>{plan.fats??'—'} g</b><span>GORDURA</span></div>
+        return <div key={plan.id} style={clientNutritionPlan}>
+          <div style={nutritionPlanAccent}/>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:14,flexWrap:'wrap'}}>
+            <div><div style={{...eyebrow,marginTop:0}}>PLANO {String(index+1).padStart(2,'0')}</div><h2 style={{...title,fontSize:32,margin:'7px 0 0'}}>{plan.name||'Plano alimentar'}</h2></div>
+            <div style={mealCountBadge}><b>{meals.length}</b><span>REFEIÇ{meals.length===1?'ÃO':'ÕES'}</span></div>
+          </div>
+          <div style={clientMacroGrid}>
+            <div style={nutritionMacroStyle('#D4AF37','rgba(212,175,55,.09)')}><div style={macroIcon}>K</div><span style={macroLabel}>CALORIAS</span><b style={macroValue}>{plan.calories??'—'}</b><small style={macroHint}>KCAL / DIA</small></div>
+            <div style={nutritionMacroStyle('#FF6B6B','rgba(255,107,107,.085)')}><div style={macroIcon}>P</div><span style={macroLabel}>PROTEÍNA</span><b style={macroValue}>{plan.protein??'—'}<small style={{fontSize:13}}> g</small></b><small style={macroHint}>RECUPERAÇÃO</small></div>
+            <div style={nutritionMacroStyle('#4DA3FF','rgba(77,163,255,.085)')}><div style={macroIcon}>HC</div><span style={macroLabel}>HIDRATOS</span><b style={macroValue}>{plan.carbohydrates??'—'}<small style={{fontSize:13}}> g</small></b><small style={macroHint}>ENERGIA</small></div>
+            <div style={nutritionMacroStyle('#A78BFA','rgba(167,139,250,.085)')}><div style={macroIcon}>G</div><span style={macroLabel}>GORDURA</span><b style={macroValue}>{plan.fats??'—'}<small style={{fontSize:13}}> g</small></b><small style={macroHint}>EQUILÍBRIO</small></div>
           </div>
           {meals.length===0?<p style={muted}>Este plano ainda não tem refeições.</p>:<div style={{display:'grid',gap:10}}>
-            {meals.map((meal:any,mealIndex:number)=><div key={meal.id} style={{border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.18)',padding:16}}>
+            {meals.map((meal:any,mealIndex:number)=><div key={meal.id} style={clientMealCard}>
               <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
-                <div style={{fontFamily:"'League Spartan',sans-serif",fontSize:12,color:GOLD,minWidth:24}}>{String(mealIndex+1).padStart(2,'0')}</div>
+                <div style={clientMealNumber}>{String(mealIndex+1).padStart(2,'0')}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:12,flexWrap:'wrap'}}>
                     <strong style={{fontFamily:"'League Spartan',sans-serif",fontSize:17,color:WHITE}}>{meal.name||'Refeição'}</strong>
-                    <span style={{...small,color:GOLD}}>{meal.calories??'—'} kcal</span>
+                    <span style={mealCalories}>{meal.calories??'—'} <small>kcal</small></span>
                   </div>
                   <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
-                    <span style={workoutMetric}><b>P</b> {meal.protein??'—'} g</span>
-                    <span style={workoutMetric}><b>HC</b> {meal.carbohydrates??'—'} g</span>
-                    <span style={workoutMetric}><b>G</b> {meal.fats??'—'} g</span>
+                    <span style={mealMacroStyle('#FF6B6B','rgba(255,107,107,.08)')}><b>P</b> {meal.protein??'—'} g</span>
+                    <span style={mealMacroStyle('#4DA3FF','rgba(77,163,255,.08)')}><b>HC</b> {meal.carbohydrates??'—'} g</span>
+                    <span style={mealMacroStyle('#A78BFA','rgba(167,139,250,.08)')}><b>G</b> {meal.fats??'—'} g</span>
                   </div>
-                  {meal.ingredients&&<div style={{marginTop:14}}><div style={labelStyle}>ALIMENTOS / QUANTIDADES</div><p style={{...text,whiteSpace:'pre-wrap',margin:'7px 0 0'}}>{meal.ingredients}</p></div>}
-                  {meal.preparation&&<div style={{marginTop:14}}><div style={labelStyle}>PREPARAÇÃO</div><p style={{...muted,whiteSpace:'pre-wrap',margin:'7px 0 0'}}>{meal.preparation}</p></div>}
+                  {meal.ingredients&&<div style={mealDetailBox}><div style={labelStyle}>ALIMENTOS / QUANTIDADES</div><p style={{...text,whiteSpace:'pre-wrap',margin:'7px 0 0',lineHeight:1.65}}>{meal.ingredients}</p></div>}
+                  {meal.preparation&&<div style={{...mealDetailBox,borderLeftColor:'#4DA3FF'}}><div style={{...labelStyle,color:'#72B6FF'}}>PREPARAÇÃO</div><p style={{...muted,whiteSpace:'pre-wrap',margin:'7px 0 0'}}>{meal.preparation}</p></div>}
                 </div>
               </div>
             </div>)}
@@ -1022,6 +1025,20 @@ const bigNumber:any={fontFamily:"'League Spartan',sans-serif",fontSize:52,fontWe
 const weightPill:any={border:'1px solid rgba(212,175,55,.22)',background:'rgba(212,175,55,.06)',padding:'10px 12px',fontFamily:"'League Spartan',sans-serif",color:WHITE}
 const workoutMetric:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.06)',padding:'7px 9px',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.75)'}
 const nutritionSummary:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.05)',padding:'14px 12px',display:'grid',gap:5,textAlign:'center',fontFamily:"'League Spartan',sans-serif",color:WHITE}
+const clientNutritionPlan:any={...card,position:'relative',overflow:'hidden',background:'linear-gradient(145deg,rgba(255,255,255,.045),rgba(0,0,0,.16))',padding:26}
+const nutritionPlanAccent:any={position:'absolute',left:0,right:0,top:0,height:3,background:'linear-gradient(90deg,#D4AF37,#FF6B6B,#4DA3FF,#A78BFA)'}
+const mealCountBadge:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.055)',padding:'9px 13px',display:'grid',justifyItems:'center',gap:2,fontFamily:"'League Spartan',sans-serif",color:GOLD}
+const clientMacroGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:9,margin:'22px 0 24px'}
+const nutritionMacroStyle=(color:string,background:string):any=>({position:'relative',overflow:'hidden',border:`1px solid ${color}33`,borderTop:`3px solid ${color}`,background,padding:'16px 14px',display:'grid',gap:5,fontFamily:"'League Spartan',sans-serif",color})
+const macroLabel:any={fontSize:8,letterSpacing:'.14em',opacity:.78}
+const macroValue:any={fontSize:27,lineHeight:1,color:WHITE}
+const macroHint:any={fontSize:7,letterSpacing:'.1em',opacity:.55}
+const macroIcon:any={position:'absolute',right:11,top:9,width:28,height:28,border:'1px solid currentColor',borderRadius:'50%',display:'grid',placeItems:'center',fontSize:8,fontWeight:900,opacity:.42}
+const clientMealCard:any={position:'relative',overflow:'hidden',border:'1px solid rgba(255,255,255,.085)',background:'linear-gradient(145deg,rgba(0,0,0,.3),rgba(255,255,255,.018))',padding:18}
+const clientMealNumber:any={width:32,height:32,border:'1px solid rgba(212,175,55,.25)',background:'rgba(212,175,55,.06)',display:'grid',placeItems:'center',fontFamily:"'League Spartan',sans-serif",fontSize:10,color:GOLD,flex:'0 0 auto'}
+const mealCalories:any={background:'rgba(212,175,55,.08)',border:'1px solid rgba(212,175,55,.18)',color:GOLD,padding:'6px 9px',fontFamily:"'League Spartan',sans-serif",fontSize:13}
+const mealMacroStyle=(color:string,background:string):any=>({border:`1px solid ${color}33`,background,color,padding:'7px 9px',fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.04em'})
+const mealDetailBox:any={marginTop:14,borderLeft:'2px solid rgba(212,175,55,.5)',background:'rgba(255,255,255,.025)',padding:'11px 13px'}
 const nutritionAdminHero:any={background:'linear-gradient(135deg,rgba(212,175,55,.10),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:24,display:'flex',justifyContent:'space-between',alignItems:'center',gap:20,flexWrap:'wrap'}
 const trainingAdminHero:any={background:'linear-gradient(135deg,rgba(212,175,55,.10),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:24,display:'flex',justifyContent:'space-between',alignItems:'center',gap:20,flexWrap:'wrap'}
 const adminInfoPill:any={border:'1px solid rgba(255,255,255,.09)',background:'rgba(0,0,0,.22)',padding:'8px 10px',fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.08em',color:'rgba(255,255,255,.5)'}
