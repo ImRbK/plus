@@ -124,7 +124,7 @@ function Dashboard({ session, admin, onLogout }: { session: Session, admin: bool
       <div style={eyebrow}>{admin?'PAINEL DE ADMINISTRAÇÃO':'ÁREA DO CLIENTE'}</div>
       <h1 style={title}>{admin?'Gestão MASSA+':`Olá${client?.full_name ? `, ${client.full_name.split(' ')[0]}` : ''}.`}</h1>
       <p style={muted}>{admin?'Gerir clientes e preparar a próxima fase da plataforma.':'Aqui vais encontrar o teu plano, evolução e ferramentas personalizadas.'}</p>
-      {loading ? <div style={card}>A carregar…</div> : error ? <div style={errorStyle}>{error}</div> : admin ? <AdminView clients={clients} session={session} onClientsChange={setClients}/> : <ClientView client={client} weights={weights} session={session}/>} 
+      {loading ? <div style={card}>A carregar…</div> : error ? <div style={errorStyle}>{error}</div> : admin ? <AdminView clients={clients} session={session} onClientsChange={setClients}/> : <ClientView client={client} weights={weights} session={session} onProgressUpdated={async()=>{const freshClient=await getOwnClient(session.access_token,session.user.id);setClient(freshClient);if(freshClient)setWeights(await getWeightProgress(session.access_token,freshClient.id))}}/>} 
     </main>
   </div>
 }
@@ -577,7 +577,7 @@ function CheckinManager({client,session,checkins,onRefresh}:{client:any,session:
   const add=async(e:React.FormEvent)=>{e.preventDefault();await createCheckIn(session.access_token,{client_id:client.id,weight:weight?Number(weight):null,training_rating:training?Number(training):null,nutrition_rating:nutrition?Number(nutrition):null,sleep_rating:sleep?Number(sleep):null,notes:notes||null});setWeight('');setTraining('');setNutrition('');setSleep('');setNotes('');onRefresh()}
   return <div style={{display:'grid',gap:12}}><div style={card}><div style={cardTitle}>REGISTAR CHECK-IN</div><form onSubmit={add} style={{display:'grid',gap:8}}><div style={formGrid}><input value={weight} onChange={e=>setWeight(e.target.value)} placeholder="Peso kg" type="number" step=".1" style={inputStyle}/><input value={training} onChange={e=>setTraining(e.target.value)} placeholder="Treino 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={nutrition} onChange={e=>setNutrition(e.target.value)} placeholder="Nutrição 1-10" type="number" min="1" max="10" style={inputStyle}/><input value={sleep} onChange={e=>setSleep(e.target.value)} placeholder="Sono 1-10" type="number" min="1" max="10" style={inputStyle}/></div><textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observações / feedback" style={{...inputStyle,minHeight:100,resize:'vertical'}}/><button style={goldButton}>GUARDAR CHECK-IN</button></form></div>{checkins.length===0?<div style={card}><p style={muted}>Ainda não existem check-ins.</p></div>:<div style={card}><div style={cardTitle}>HISTÓRICO</div>{checkins.map(c=><div key={c.id} style={row}><div><strong>{c.created_at?.slice(0,10)}</strong><div style={small}>Peso {c.weight??'—'} kg · Treino {c.training_rating??'—'}/10 · Nutrição {c.nutrition_rating??'—'}/10 · Sono {c.sleep_rating??'—'}/10</div>{c.notes&&<div style={small}>{c.notes}</div>}</div><button onClick={async()=>{await deleteCheckIn(session.access_token,c.id);onRefresh()}} style={dangerButton}>×</button></div>)}</div>}</div>
 }
-function ClientView({client,weights,session}:{client:any,weights:any[],session:Session}) {
+function ClientView({client,weights,session,onProgressUpdated}:{client:any,weights:any[],session:Session,onProgressUpdated:()=>Promise<void>}) {
   const [tab,setTab]=useState<'profile'|'workout'|'nutrition'|'checkin'>('profile')
   const [workouts,setWorkouts]=useState<any[]>([])
   const [exercisesByWorkout,setExercisesByWorkout]=useState<Record<string,any[]>>({})
@@ -736,11 +736,11 @@ function ClientView({client,weights,session}:{client:any,weights:any[],session:S
       })}
     </div>}
 
-    {tab==='checkin'&&<ClientCheckinView client={client} session={session} checkins={clientCheckins} loading={loadingCheckins} error={checkinError} onRefresh={loadClientCheckins}/>}
+    {tab==='checkin'&&<ClientCheckinView client={client} session={session} checkins={clientCheckins} loading={loadingCheckins} error={checkinError} onRefresh={loadClientCheckins} onProgressUpdated={onProgressUpdated}/>}
   </div>
 }
 
-function ClientCheckinView({client,session,checkins,loading,error,onRefresh}:{client:any,session:Session,checkins:any[],loading:boolean,error:string,onRefresh:()=>Promise<void>}){
+function ClientCheckinView({client,session,checkins,loading,error,onRefresh,onProgressUpdated}:{client:any,session:Session,checkins:any[],loading:boolean,error:string,onRefresh:()=>Promise<void>,onProgressUpdated:()=>Promise<void>}){
   const [weight,setWeight]=useState(client.current_weight?.toString()||'')
   const [training,setTraining]=useState('')
   const [nutrition,setNutrition]=useState('')
@@ -754,10 +754,15 @@ function ClientCheckinView({client,session,checkins,loading,error,onRefresh}:{cl
     e.preventDefault();setSaving(true);setMessage('')
     try{
       if(!training||!nutrition||!sleep)throw new Error('Avalia o treino, a alimentação e o sono antes de enviar.')
-      await createCheckIn(session.access_token,{client_id:client.id,weight:weight?Number(weight):null,training_rating:Number(training),nutrition_rating:Number(nutrition),sleep_rating:Number(sleep),notes:notes.trim()||null})
+      const numericWeight=weight?Number(weight):null
+      await createCheckIn(session.access_token,{client_id:client.id,weight:numericWeight,training_rating:Number(training),nutrition_rating:Number(nutrition),sleep_rating:Number(sleep),notes:notes.trim()||null})
+      if(numericWeight!==null){
+        await addWeightProgress(session.access_token,{client_id:client.id,weight:numericWeight,recorded_at:new Date().toISOString().slice(0,10)})
+        await updateClientProfile(session.access_token,client.id,{current_weight:numericWeight})
+      }
       setTraining('');setNutrition('');setSleep('');setNotes('')
       setMessage('Check-in enviado com sucesso. O teu treinador já o pode consultar.')
-      await onRefresh()
+      await Promise.all([onRefresh(),onProgressUpdated()])
     }catch(e:any){setMessage(e.message||'Não foi possível enviar o check-in.')}finally{setSaving(false)}
   }
 
