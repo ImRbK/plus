@@ -132,6 +132,7 @@ function Dashboard({ session, admin, onLogout }: { session: Session, admin: bool
 function AdminView({clients, session, onClientsChange}:{clients:any[], session:Session, onClientsChange:(clients:any[])=>void}) {
   const [open, setOpen] = useState(false)
   const [selectedClient, setSelectedClient] = useState<any>(null)
+  const [selectedTab, setSelectedTab] = useState<'overview'|'workout'|'nutrition'|'checkin'>('overview')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -170,6 +171,7 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
     return <ClientManager
       client={selectedClient}
       session={session}
+      initialTab={selectedTab}
       onBack={()=>setSelectedClient(null)}
       onClientUpdated={(c)=>{ setSelectedClient(c); onClientsChange(clients.map(x=>x.id===c.id?c:x)) }}
     />
@@ -184,10 +186,10 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
       {error && !open && <div style={{...errorStyle,marginBottom:14}}>{error}</div>}
       {clients.length===0?<p style={muted}>Ainda não existem perfis de cliente.</p>:<div style={{display:'grid',gap:8}}>{clients.map(c=><div key={c.id} style={{...row,flexWrap:'wrap',gap:12}}>
         <div><strong>{c.full_name}</strong><div style={small}>{c.email||'Sem email'}</div></div>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginLeft:'auto'}}><div style={{textAlign:'right'}}><strong>{c.current_weight ?? '—'} kg</strong><div style={small}>objetivo {c.goal_weight ?? '—'} kg</div></div><button onClick={()=>setSelectedClient(c)} style={ghostButton}>ABRIR</button><button onClick={()=>remove(c)} style={dangerButton}>ELIMINAR</button></div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginLeft:'auto'}}><div style={{textAlign:'right'}}><strong>{c.current_weight ?? '—'} kg</strong><div style={small}>objetivo {c.goal_weight ?? '—'} kg</div></div><button onClick={()=>{setSelectedTab('overview');setSelectedClient(c)}} style={ghostButton}>ABRIR</button><button onClick={()=>remove(c)} style={dangerButton}>ELIMINAR</button></div>
       </div>)}</div>}
     </div>
-    <div style={card}><div style={cardTitle}>FERRAMENTAS DISPONÍVEIS</div><div style={featureGrid}>{['Treinos personalizados','Planos alimentares','Check-ins semanais','Peso e progresso'].map(x=><div key={x} style={feature}>{x}<span>ABRIR CLIENTE</span></div>)}</div></div>
+    <AdminControlCenter clients={clients} session={session} onOpen={(client,tab)=>{setSelectedTab(tab);setSelectedClient(client)}}/>
 
     {open && <div style={modalBackdrop}>
       <div style={modal}>
@@ -209,9 +211,77 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
   </div>
 }
 
+function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Session,onOpen:(client:any,tab:'overview'|'workout'|'nutrition'|'checkin')=>void}){
+  const [data,setData]=useState<Record<string,{workouts:any[],nutrition:any[],checkins:any[],weights:any[]}>>({})
+  const [loading,setLoading]=useState(true)
+  const [error,setError]=useState('')
 
-function ClientManager({client, session, onBack, onClientUpdated}:{client:any,session:Session,onBack:()=>void,onClientUpdated:(c:any)=>void}) {
-  const [tab,setTab]=useState<'overview'|'workout'|'nutrition'|'checkin'>('overview')
+  const load=useCallback(async()=>{
+    if(clients.length===0){setData({});setLoading(false);return}
+    setLoading(true);setError('')
+    try{
+      const rows=await Promise.all(clients.map(async(client)=>{
+        const [workouts,nutrition,checkins,weights]=await Promise.all([
+          getClientWorkouts(session.access_token,client.id),
+          getNutritionPlans(session.access_token,client.id),
+          getCheckIns(session.access_token,client.id),
+          getWeightProgress(session.access_token,client.id),
+        ])
+        return [client.id,{workouts,nutrition,checkins,weights}] as const
+      }))
+      setData(Object.fromEntries(rows))
+    }catch(e:any){setError(e.message||'Não foi possível carregar o resumo das ferramentas.')}finally{setLoading(false)}
+  },[clients,session.access_token])
+
+  useEffect(()=>{load()},[load])
+
+  const totalWorkouts=clients.reduce((sum,c)=>sum+(data[c.id]?.workouts.length||0),0)
+  const totalNutrition=clients.reduce((sum,c)=>sum+(data[c.id]?.nutrition.length||0),0)
+  const totalCheckins=clients.reduce((sum,c)=>sum+(data[c.id]?.checkins.length||0),0)
+  const totalWeights=clients.reduce((sum,c)=>sum+(data[c.id]?.weights.length||0),0)
+  const withoutWorkout=clients.filter(c=>(data[c.id]?.workouts.length||0)===0)
+  const withoutNutrition=clients.filter(c=>(data[c.id]?.nutrition.length||0)===0)
+  const withoutCheckin=clients.filter(c=>(data[c.id]?.checkins.length||0)===0)
+  const withoutProgress=clients.filter(c=>(data[c.id]?.weights.length||0)<2)
+  const latestCheckinClient=clients
+    .map(c=>({client:c,date:data[c.id]?.checkins[0]?.created_at||''}))
+    .sort((a,b)=>b.date.localeCompare(a.date))[0]?.client
+
+  const cards=[
+    {key:'workout',label:'TREINOS',value:totalWorkouts,unit:'planos criados',missing:withoutWorkout,description:withoutWorkout.length?`${withoutWorkout.length} cliente${withoutWorkout.length===1?'':'s'} ainda sem treino`:'Todos os clientes têm treino',tab:'workout' as const,target:withoutWorkout[0]||clients[0]},
+    {key:'nutrition',label:'NUTRIÇÃO',value:totalNutrition,unit:'planos alimentares',missing:withoutNutrition,description:withoutNutrition.length?`${withoutNutrition.length} cliente${withoutNutrition.length===1?'':'s'} ainda sem plano`:'Todos os clientes têm plano',tab:'nutrition' as const,target:withoutNutrition[0]||clients[0]},
+    {key:'checkin',label:'CHECK-INS',value:totalCheckins,unit:'registos recebidos',missing:withoutCheckin,description:withoutCheckin.length?`${withoutCheckin.length} cliente${withoutCheckin.length===1?'':'s'} sem check-in`:'Todos já enviaram check-in',tab:'checkin' as const,target:withoutCheckin[0]||latestCheckinClient||clients[0]},
+    {key:'progress',label:'PROGRESSO',value:totalWeights,unit:'pesagens guardadas',missing:withoutProgress,description:withoutProgress.length?`${withoutProgress.length} cliente${withoutProgress.length===1?'':'s'} com poucos registos`:'Progresso atualizado',tab:'overview' as const,target:withoutProgress[0]||clients[0]},
+  ]
+
+  return <div style={card}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap',marginBottom:18}}>
+      <div><div style={cardTitle}>CENTRO DE CONTROLO</div><p style={{...muted,margin:'-8px 0 0'}}>Resumo da plataforma e atalhos para o próximo trabalho.</p></div>
+      <button onClick={load} disabled={loading} style={ghostButton}>{loading?'A ATUALIZAR…':'ATUALIZAR DADOS'}</button>
+    </div>
+    {error&&<div style={{...errorStyle,marginBottom:14}}>{error}</div>}
+    {clients.length===0?<div style={emptyToolState}>Cria um cliente para ativares o centro de controlo.</div>:loading?<div style={emptyToolState}>A calcular o resumo dos clientes…</div>:<>
+      <div style={controlGrid}>{cards.map(tool=><button key={tool.key} onClick={()=>tool.target&&onOpen(tool.target,tool.tab)} style={controlCard}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'flex-start'}}><span style={controlLabel}>{tool.label}</span><span style={{...statusDot,background:tool.missing.length?'#d6a72a':'#4ca66a'}}/></div>
+        <div style={controlNumber}>{tool.value}</div>
+        <div style={controlUnit}>{tool.unit}</div>
+        <div style={{...controlStatus,color:tool.missing.length?'#e4bd54':'#81c990'}}>{tool.description}</div>
+        <div style={controlAction}>{tool.target?`ABRIR ${tool.target.full_name?.split(' ')[0]?.toUpperCase()||'CLIENTE'} →`:'SEM CLIENTES'}</div>
+      </button>)}</div>
+      {(withoutWorkout.length>0||withoutNutrition.length>0)&&<div style={{marginTop:18,paddingTop:17,borderTop:'1px solid rgba(255,255,255,.07)'}}>
+        <div style={cardTitle}>AÇÕES RECOMENDADAS</div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {withoutWorkout.slice(0,3).map(c=><button key={`w-${c.id}`} onClick={()=>onOpen(c,'workout')} style={actionChip}>＋ Criar treino para {c.full_name}</button>)}
+          {withoutNutrition.slice(0,3).map(c=><button key={`n-${c.id}`} onClick={()=>onOpen(c,'nutrition')} style={actionChip}>＋ Criar nutrição para {c.full_name}</button>)}
+        </div>
+      </div>}
+    </>}
+  </div>
+}
+
+
+function ClientManager({client, session, initialTab='overview', onBack, onClientUpdated}:{client:any,session:Session,initialTab?:'overview'|'workout'|'nutrition'|'checkin',onBack:()=>void,onClientUpdated:(c:any)=>void}) {
+  const [tab,setTab]=useState<'overview'|'workout'|'nutrition'|'checkin'>(initialTab)
   const [weights,setWeights]=useState<any[]>([])
   const [workouts,setWorkouts]=useState<any[]>([])
   const [nutrition,setNutrition]=useState<any[]>([])
@@ -733,6 +803,16 @@ const ratingButton:any={minHeight:40,border:'1px solid rgba(255,255,255,.1)',fon
 const checkinTip:any={background:'linear-gradient(135deg,rgba(212,175,55,.09),rgba(255,255,255,.025))',border:'1px solid rgba(212,175,55,.18)',padding:20}
 const clientCheckinCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.2)',padding:14}
 const checkinScore:any={border:'1px solid rgba(212,175,55,.15)',background:'rgba(212,175,55,.045)',padding:'7px 8px',fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.06em',color:'rgba(255,255,255,.55)'}
+const controlGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}
+const controlCard:any={background:'linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.16))',border:'1px solid rgba(255,255,255,.08)',padding:18,textAlign:'left',color:WHITE,cursor:'pointer',display:'grid',gap:5,fontFamily:"'Inter',sans-serif"}
+const controlLabel:any={fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.15em',color:GOLD}
+const statusDot:any={width:8,height:8,borderRadius:'50%',boxShadow:'0 0 10px currentColor'}
+const controlNumber:any={fontFamily:"'League Spartan',sans-serif",fontSize:38,fontWeight:900,lineHeight:1,marginTop:12}
+const controlUnit:any={fontSize:10,color:'rgba(255,255,255,.38)'}
+const controlStatus:any={fontSize:11,marginTop:10,minHeight:17}
+const controlAction:any={fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.1em',color:'rgba(255,255,255,.65)',marginTop:12,paddingTop:12,borderTop:'1px solid rgba(255,255,255,.07)'}
+const actionChip:any={background:'rgba(212,175,55,.06)',border:'1px solid rgba(212,175,55,.18)',color:'#e4bd54',padding:'9px 11px',fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.06em',cursor:'pointer'}
+const emptyToolState:any={border:'1px dashed rgba(255,255,255,.1)',padding:28,textAlign:'center',fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,.4)'}
 const featureGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:10}
 const feature:any={border:'1px solid rgba(255,255,255,.07)',padding:16,fontFamily:"'Inter',sans-serif",fontSize:13,display:'flex',justifyContent:'space-between',gap:12}
 const arrowStyle:any={position:'fixed',top:'50%',transform:'translateY(-50%)',background:'rgba(212,175,55,.12)',border:'1px solid rgba(212,175,55,.25)',width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,transition:'all .15s',zIndex:10}
