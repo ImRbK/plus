@@ -759,27 +759,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       {!loadingWorkouts&&!workoutError&&workouts.length===0&&<div style={card}><div style={cardTitle}>AINDA SEM TREINO</div><p style={muted}>Ainda não tens nenhum plano de treino atribuído. Quando o teu treinador o criar, aparecerá aqui automaticamente.</p></div>}
       {!loadingWorkouts&&!workoutError&&workouts.map((workout:any,index:number)=>{
         const exercises=exercisesByWorkout[String(workout.id)]||[]
-        return <div key={workout.id} style={card}>
-          <div style={eyebrow}>TREINO {String(index+1).padStart(2,'0')}</div>
-          <h2 style={{...title,fontSize:30,marginTop:7}}>{workout.name||workout.title||'Plano de treino'}</h2>
-          {workout.description&&<p style={{...muted,marginTop:0}}>{workout.description}</p>}
-          {exercises.length===0?<p style={muted}>Este plano ainda não tem exercícios.</p>:<div style={{display:'grid',gap:10,marginTop:18}}>
-            {exercises.map((exercise:any,exerciseIndex:number)=><div key={exercise.id} style={{border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.18)',padding:16}}>
-              <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
-                <div style={{fontFamily:"'League Spartan',sans-serif",fontSize:12,color:GOLD,minWidth:24}}>{String(exerciseIndex+1).padStart(2,'0')}</div>
-                <div style={{flex:1}}>
-                  <strong style={{fontFamily:"'League Spartan',sans-serif",fontSize:17,color:WHITE}}>{exercise.name||exercise.exercise_name||'Exercício'}</strong>
-                  <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}>
-                    <span style={workoutMetric}><b>SÉRIES</b> {exercise.sets??'—'}</span>
-                    <span style={workoutMetric}><b>REPS</b> {exercise.reps??exercise.repetitions??'—'}</span>
-                    <span style={workoutMetric}><b>DESCANSO</b> {exercise.rest??exercise.rest_seconds??'—'}</span>
-                  </div>
-                  {exercise.notes&&<p style={{...muted,margin:'12px 0 0'}}>{exercise.notes}</p>}
-                </div>
-              </div>
-            </div>)}
-          </div>}
-        </div>
+        return <ClientWorkoutCard key={workout.id} workout={workout} exercises={exercises} index={index}/>
       })}
     </div>}
 
@@ -830,6 +810,38 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
     </div>}
 
     {tab==='checkin'&&<ClientCheckinView client={client} session={session} checkins={clientCheckins} loading={loadingCheckins} error={checkinError} onRefresh={loadClientCheckins} onProgressUpdated={onProgressUpdated}/>}
+  </div>
+}
+
+function ClientWorkoutCard({workout,exercises,index}:{workout:any,exercises:any[],index:number}){
+  const [openExercise,setOpenExercise]=useState<number|null>(exercises[0]?.id??null)
+  const totalSets=exercises.reduce((sum,item)=>sum+(Number(item.sets)||0),0)
+  return <div style={clientWorkoutPlan}>
+    <div style={workoutPlanAccent}/>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap'}}>
+      <div><div style={{...eyebrow,marginTop:0}}>TREINO {String(index+1).padStart(2,'0')}</div><h2 style={{...title,fontSize:32,margin:'7px 0 5px'}}>{workout.name||workout.title||'Plano de treino'}</h2>{workout.description&&<p style={{...muted,margin:0,maxWidth:650}}>{workout.description}</p>}</div>
+      <div style={{display:'flex',gap:7}}><div style={workoutCountBadge}><b>{exercises.length}</b><span>EXERCÍCIOS</span></div><div style={workoutCountBadge}><b>{totalSets}</b><span>SÉRIES</span></div></div>
+    </div>
+    {exercises.length===0?<div style={emptyWorkoutState}><div style={cardTitle}>TREINO EM PREPARAÇÃO</div><p style={muted}>O teu treinador ainda não adicionou exercícios a este plano.</p></div>:<div style={{display:'grid',gap:9,marginTop:22}}>
+      {exercises.map((exercise:any,exerciseIndex:number)=>{
+        const isOpen=openExercise===exercise.id
+        return <div key={exercise.id} style={{...clientExerciseCard,borderColor:isOpen?'rgba(212,175,55,.24)':'rgba(255,255,255,.085)'}}>
+          <button onClick={()=>setOpenExercise(isOpen?null:exercise.id)} style={exerciseHeader} aria-expanded={isOpen}>
+            <div style={clientExerciseNumber}>{String(exerciseIndex+1).padStart(2,'0')}</div>
+            <div style={{flex:1,minWidth:0,textAlign:'left'}}><strong style={{fontFamily:"'League Spartan',sans-serif",fontSize:16,color:WHITE}}>{exercise.name||exercise.exercise_name||'Exercício'}</strong><div style={{...small,marginTop:4}}>{isOpen?'Ocultar detalhes':'Ver execução e detalhes'}</div></div>
+            <span style={{...exerciseChevron,transform:isOpen?'rotate(45deg)':'none'}}>＋</span>
+          </button>
+          <div style={clientExerciseMetrics}>
+            <div style={exerciseMetricStyle('#D4AF37','rgba(212,175,55,.075)')}><span>SÉRIES</span><b>{exercise.sets??'—'}</b></div>
+            <div style={exerciseMetricStyle('#4DA3FF','rgba(77,163,255,.075)')}><span>REPETIÇÕES</span><b>{exercise.reps??exercise.repetitions??'—'}</b></div>
+            <div style={exerciseMetricStyle('#A78BFA','rgba(167,139,250,.075)')}><span>DESCANSO</span><b>{exercise.rest??exercise.rest_seconds??'—'}{(exercise.rest??exercise.rest_seconds)!=null?'s':''}</b></div>
+          </div>
+          {isOpen&&<div style={exerciseDetails}>
+            {exercise.notes?<><div style={{...labelStyle,color:'#E7C75E'}}>NOTAS DO TREINADOR</div><p style={{...text,margin:'8px 0 0',lineHeight:1.65}}>{exercise.notes}</p></>:<p style={{...muted,margin:0}}>Mantém uma execução controlada e respeita as séries, repetições e descanso indicados.</p>}
+          </div>}
+        </div>
+      })}
+    </div>}
   </div>
 }
 
@@ -1025,6 +1037,17 @@ const bigNumber:any={fontFamily:"'League Spartan',sans-serif",fontSize:52,fontWe
 const weightPill:any={border:'1px solid rgba(212,175,55,.22)',background:'rgba(212,175,55,.06)',padding:'10px 12px',fontFamily:"'League Spartan',sans-serif",color:WHITE}
 const workoutMetric:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.06)',padding:'7px 9px',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.75)'}
 const nutritionSummary:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.05)',padding:'14px 12px',display:'grid',gap:5,textAlign:'center',fontFamily:"'League Spartan',sans-serif",color:WHITE}
+const clientWorkoutPlan:any={...card,position:'relative',overflow:'hidden',background:'linear-gradient(145deg,rgba(255,255,255,.045),rgba(0,0,0,.16))',padding:26}
+const workoutPlanAccent:any={position:'absolute',left:0,right:0,top:0,height:3,background:'linear-gradient(90deg,#D4AF37,#4DA3FF,#A78BFA)'}
+const workoutCountBadge:any={minWidth:76,border:'1px solid rgba(212,175,55,.17)',background:'rgba(212,175,55,.05)',padding:'9px 11px',display:'grid',justifyItems:'center',gap:2,fontFamily:"'League Spartan',sans-serif",color:GOLD}
+const emptyWorkoutState:any={marginTop:20,border:'1px dashed rgba(255,255,255,.1)',padding:28,textAlign:'center'}
+const clientExerciseCard:any={overflow:'hidden',border:'1px solid rgba(255,255,255,.085)',background:'linear-gradient(145deg,rgba(0,0,0,.3),rgba(255,255,255,.018))'}
+const exerciseHeader:any={width:'100%',display:'flex',alignItems:'center',gap:12,background:'transparent',border:'none',color:WHITE,padding:15,cursor:'pointer'}
+const clientExerciseNumber:any={width:34,height:34,border:'1px solid rgba(212,175,55,.24)',background:'rgba(212,175,55,.06)',display:'grid',placeItems:'center',fontFamily:"'League Spartan',sans-serif",fontSize:10,color:GOLD,flex:'0 0 auto'}
+const exerciseChevron:any={width:28,height:28,border:'1px solid rgba(255,255,255,.1)',display:'grid',placeItems:'center',fontSize:16,color:'rgba(255,255,255,.5)',transition:'transform .2s ease'}
+const clientExerciseMetrics:any={display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:7,padding:'0 15px 15px'}
+const exerciseMetricStyle=(color:string,background:string):any=>({border:`1px solid ${color}2f`,borderTop:`2px solid ${color}`,background,padding:'10px 11px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,fontFamily:"'League Spartan',sans-serif",fontSize:8,letterSpacing:'.07em',color})
+const exerciseDetails:any={borderTop:'1px solid rgba(255,255,255,.07)',borderLeft:'3px solid rgba(212,175,55,.55)',background:'rgba(212,175,55,.035)',padding:'13px 15px',margin:'0 15px 15px'}
 const clientNutritionPlan:any={...card,position:'relative',overflow:'hidden',background:'linear-gradient(145deg,rgba(255,255,255,.045),rgba(0,0,0,.16))',padding:26}
 const nutritionPlanAccent:any={position:'absolute',left:0,right:0,top:0,height:3,background:'linear-gradient(90deg,#D4AF37,#FF6B6B,#4DA3FF,#A78BFA)'}
 const mealCountBadge:any={border:'1px solid rgba(212,175,55,.18)',background:'rgba(212,175,55,.055)',padding:'9px 13px',display:'grid',justifyItems:'center',gap:2,fontFamily:"'League Spartan',sans-serif",color:GOLD}
