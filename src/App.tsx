@@ -36,6 +36,34 @@ const PAGES = [
   { component: P37_QRCode, title: 'Código QR / Coaching' },
 ]
 
+const SUPABASE_FUNCTION_URL = 'https://hopluplbpywekkvzvmyu.supabase.co/functions/v1'
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ElMRU2w_cduTLyftuwOHLA_3tK24vlt'
+
+async function updateClientEmailViaFunction(token: string, userId: string, email: string) {
+  const response = await fetch(`${SUPABASE_FUNCTION_URL}/update-client-email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_PUBLISHABLE_KEY,
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      email: email.trim(),
+    }),
+  })
+
+  const text = await response.text()
+  let data: any = null
+  try { data = text ? JSON.parse(text) : null } catch { data = text }
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || 'Não foi possível alterar o email do cliente.')
+  }
+
+  return data
+}
+
 const GOLD = '#D4AF37'
 const WHITE = '#FFFFFF'
 const SECTIONS = [
@@ -208,17 +236,24 @@ function ClientManager({client, session, onBack, onClientUpdated}:{client:any,se
   const saveProfile=async(e:React.FormEvent)=>{
     e.preventDefault(); setBusy(true); setMessage('')
     try{
+      const newEmail = profile.email.trim()
+      const oldEmail = (client.email || '').trim()
+
+      if (newEmail && newEmail.toLowerCase() !== oldEmail.toLowerCase()) {
+        await updateClientEmailViaFunction(session.access_token, client.id, newEmail)
+      }
+
       const updated=await updateClientProfile(session.access_token,client.id,{
-        full_name:profile.full_name.trim(), email:profile.email.trim(),
+        full_name:profile.full_name.trim(), email:newEmail,
         initial_weight:profile.initial_weight===''?null:Number(profile.initial_weight),
         current_weight:profile.current_weight===''?null:Number(profile.current_weight),
         height:profile.height===''?null:Number(profile.height),
         goal_weight:profile.goal_weight===''?null:Number(profile.goal_weight),
         goal:profile.goal.trim()||null,start_date:profile.start_date||null
       })
-      setMessage('Perfil guardado.')
+      setMessage('Perfil guardado com sucesso.')
       if(updated) onClientUpdated(updated)
-    }catch(e:any){setMessage(e.message||'Não foi possível guardar.')}finally{setBusy(false)}
+    }catch(e:any){setMessage(e.message||'Não foi possível guardar as alterações.')}finally{setBusy(false)}
   }
 
   const messageStyle = message.startsWith('Erro') || message.includes('não') ? errorStyle : successStyle
