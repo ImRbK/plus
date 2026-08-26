@@ -139,6 +139,21 @@ export async function updateClientProfile(token: string, clientId: string, profi
   return rows?.[0] ?? null
 }
 
+export async function uploadBeforePhoto(token: string, clientId: string, file: File) {
+  if (!file.type.startsWith('image/')) throw new Error('Seleciona um ficheiro de imagem.')
+  if (file.size > 5 * 1024 * 1024) throw new Error('A fotografia não pode ter mais de 5 MB.')
+  const extension = (file.name.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  const path = `${clientId}/before-${Date.now()}.${extension}`
+  const response = await fetch(`${SUPABASE_URL}/storage/v1/object/client-progress/${path}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': file.type, 'x-upsert': 'true' },
+    body: file,
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(data?.message || data?.error || 'Não foi possível enviar a fotografia.')
+  return `${SUPABASE_URL}/storage/v1/object/public/client-progress/${path}`
+}
+
 export async function getClientWorkouts(token: string, clientId: string) {
   return await request(`/rest/v1/workout_plans?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.asc`, {method:'GET'}, token)
 }
