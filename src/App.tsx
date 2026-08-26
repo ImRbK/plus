@@ -17,7 +17,7 @@ import {
   P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
   P44_Plateaus, P45_FatLossPlan,
 } from './ebook/lossPages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -406,6 +406,19 @@ function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:
   const [name,setName]=useState(''),[description,setDescription]=useState('')
   const [formOpen,setFormOpen]=useState(workouts.length===0),[open,setOpen]=useState<number|null>(null),[ex,setEx]=useState<Record<number,any[]>>({})
   const [saving,setSaving]=useState(false),[message,setMessage]=useState('')
+  const [editingId,setEditingId]=useState<number|null>(null),[editName,setEditName]=useState(''),[editing,setEditing]=useState(false)
+
+  useEffect(()=>{
+    let cancelled=false
+    const loadAllExercises=async()=>{
+      try{
+        const rows=await Promise.all(workouts.map(async workout=>[workout.id,await getWorkoutExercises(session.access_token,workout.id)] as const))
+        if(!cancelled)setEx(Object.fromEntries(rows))
+      }catch(e:any){if(!cancelled)setMessage(e.message||'Não foi possível carregar os exercícios dos treinos.')}
+    }
+    loadAllExercises()
+    return()=>{cancelled=true}
+  },[workouts,session.access_token])
 
   const resetForm=()=>{setName('');setDescription('')}
   const add=async(e:React.FormEvent)=>{
@@ -425,6 +438,19 @@ function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:
     catch(e:any){setMessage(e.message||'Não foi possível eliminar o treino.')}
   }
   const duplicateWorkout=(workout:any)=>{setName(`${workout.name} — cópia`);setDescription(workout.description||'');setFormOpen(true);window.scrollTo({top:0,behavior:'smooth'})}
+  const startEditing=(workout:any)=>{setEditingId(workout.id);setEditName(workout.name||'');setMessage('')}
+  const cancelEditing=()=>{setEditingId(null);setEditName('')}
+  const saveWorkoutName=async(e:React.FormEvent,workout:any)=>{
+    e.preventDefault()
+    const nextName=editName.trim()
+    if(!nextName){setMessage('O nome do treino não pode ficar vazio.');return}
+    setEditing(true);setMessage('')
+    try{
+      await updateWorkout(session.access_token,workout.id,{name:nextName})
+      cancelEditing();setMessage('Nome do treino guardado com sucesso.');onRefresh()
+    }catch(e:any){setMessage(e.message||'Não foi possível alterar o nome do treino.')}
+    finally{setEditing(false)}
+  }
 
   return <div style={{display:'grid',gap:16}}>
     <div style={trainingAdminHero}>
@@ -452,10 +478,10 @@ function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:
         <div style={{height:3,background:index===0?GOLD:'rgba(255,255,255,.12)'}}/>
         <div style={{padding:24}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap'}}>
-            <div><div style={{...eyebrow,marginTop:0}}>TREINO {String(index+1).padStart(2,'0')}</div><h3 style={{...title,fontSize:27,marginBottom:5}}>{workout.name}</h3><p style={{...muted,margin:0}}>{workout.description||'Sem orientação adicional.'}</p></div>
-            <div style={{display:'flex',gap:7,flexWrap:'wrap'}}><button onClick={()=>duplicateWorkout(workout)} style={ghostButton}>DUPLICAR</button><button onClick={()=>loadEx(workout.id)} style={{...goldButton,padding:'10px 13px'}}>{open===workout.id?'FECHAR TREINO':'GERIR EXERCÍCIOS'}</button><button onClick={()=>removeWorkout(workout)} style={dangerButton}>ELIMINAR</button></div>
+            <div style={{flex:1,minWidth:240}}><div style={{...eyebrow,marginTop:0}}>TREINO {String(index+1).padStart(2,'0')}</div>{editingId===workout.id?<form onSubmit={e=>saveWorkoutName(e,workout)} style={{display:'flex',gap:7,alignItems:'center',flexWrap:'wrap',margin:'7px 0 8px'}}><input autoFocus value={editName} onChange={e=>setEditName(e.target.value)} required aria-label="Novo nome do treino" style={{...inputStyle,flex:'1 1 240px'}}/><button disabled={editing} style={{...goldButton,padding:'10px 13px'}}>{editing?'A GUARDAR…':'GUARDAR'}</button><button type="button" disabled={editing} onClick={cancelEditing} style={ghostButton}>CANCELAR</button></form>:<h3 style={{...title,fontSize:27,marginBottom:5}}>{workout.name}</h3>}<p style={{...muted,margin:0}}>{workout.description||'Sem orientação adicional.'}</p></div>
+            <div style={{display:'flex',gap:7,flexWrap:'wrap'}}><button onClick={()=>startEditing(workout)} disabled={editingId!==null} style={ghostButton}>EDITAR</button><button onClick={()=>duplicateWorkout(workout)} style={ghostButton}>DUPLICAR</button><button onClick={()=>loadEx(workout.id)} style={{...goldButton,padding:'10px 13px'}}>{open===workout.id?'FECHAR TREINO':'GERIR EXERCÍCIOS'}</button><button onClick={()=>removeWorkout(workout)} style={dangerButton}>ELIMINAR</button></div>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8,marginTop:20}}><div style={trainingStat}><span>EXERCÍCIOS</span><b>{open===workout.id?exercises.length:'—'}</b></div><div style={trainingStat}><span>SÉRIES TOTAIS</span><b>{open===workout.id?totalSets:'—'}</b></div><div style={trainingStat}><span>ESTADO</span><b style={{fontSize:14,color:open===workout.id&&exercises.length>0?'#81c990':'#e4bd54'}}>{open===workout.id?(exercises.length?'CONFIGURADO':'INCOMPLETO'):'ABRIR'}</b></div></div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8,marginTop:20}}><div style={trainingStat}><span>EXERCÍCIOS</span><b>{exercises.length}</b></div><div style={trainingStat}><span>SÉRIES TOTAIS</span><b>{totalSets}</b></div><div style={trainingStat}><span>ESTADO</span><b style={{fontSize:14,color:open===workout.id&&exercises.length>0?'#81c990':'#e4bd54'}}>{open===workout.id?(exercises.length?'CONFIGURADO':'INCOMPLETO'):'ABRIR'}</b></div></div>
           {open===workout.id&&<div style={{marginTop:22,paddingTop:22,borderTop:'1px solid rgba(255,255,255,.08)'}}><ExerciseEditor session={session} workout={workout} exercises={exercises} onRefresh={()=>loadExercisesAfterChange(workout.id,setEx,session.access_token)}/></div>}
         </div>
       </div>
