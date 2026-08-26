@@ -17,7 +17,7 @@ import {
   P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
   P44_Plateaus, P45_FatLossPlan,
 } from './ebook/lossPages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getCoachNotes, createCoachNote, deleteCoachNote, getClientTasks, createClientTask, updateClientTask, deleteClientTask, getMonthlyAssessments, createMonthlyAssessment, updateMonthlyAssessment, deleteMonthlyAssessment, uploadAssessmentPhoto, getSupplements, createSupplement, updateSupplement, deleteSupplement, getClientIntake, saveClientIntake, reviewClientIntake, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, refreshSession, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getCoachNotes, createCoachNote, deleteCoachNote, getClientTasks, createClientTask, updateClientTask, deleteClientTask, getMonthlyAssessments, createMonthlyAssessment, updateMonthlyAssessment, deleteMonthlyAssessment, uploadAssessmentPhoto, getSupplements, createSupplement, updateSupplement, deleteSupplement, getClientIntake, saveClientIntake, reviewClientIntake, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -149,7 +149,7 @@ function Login({ onLogin }: { onLogin: (s: Session, admin: boolean) => void }) {
   </div>
 }
 
-function Dashboard({ session, admin, onLogout }: { session: Session, admin: boolean, onLogout:()=>void }) {
+function Dashboard({ session, admin, onLogout, onEbook }: { session: Session, admin: boolean, onLogout:()=>void, onEbook:()=>void }) {
   const [client, setClient] = useState<any>(null)
   const [clients, setClients] = useState<any[]>([])
   const [weights, setWeights] = useState<any[]>([])
@@ -169,7 +169,7 @@ function Dashboard({ session, admin, onLogout }: { session: Session, admin: bool
     })()
   }, [session, admin])
   return <div style={dashboardShell}>
-    <header className="dashboard-header" style={dashHeader}><div style={brand}>MASSA<span>+</span></div><div style={{display:'flex',alignItems:'center',gap:14}}><span className="dashboard-identity" style={muted}>{admin?'ADMINISTRADOR':session.user.email}</span><button onClick={()=>{signOut();onLogout()}} style={ghostButton}>SAIR</button></div></header>
+    <header className="dashboard-header" style={dashHeader}><div style={brand}>MASSA<span>+</span></div><div style={{display:'flex',alignItems:'center',gap:8}}><span className="dashboard-identity" style={muted}>{admin?'ADMINISTRADOR':session.user.email}</span><button onClick={onEbook} style={ghostButton}>E-BOOK</button><button onClick={()=>{signOut();onLogout()}} style={dangerButton}>TERMINAR SESSÃO</button></div></header>
     <main className="dashboard-main" style={{width:'min(1180px,calc(100% - 32px))', margin:'0 auto', padding:'48px 0 80px'}}>
       <div style={eyebrow}>{admin?'PAINEL DE ADMINISTRAÇÃO':'ÁREA DO CLIENTE'}</div>
       <h1 style={title}>{admin?'Gestão MASSA+':`Olá${client?.full_name ? `, ${client.full_name.split(' ')[0]}` : ''}.`}</h1>
@@ -1251,15 +1251,20 @@ function Ebook() {
 }
 
 export default function App(){
-  const [mode,setMode]=useState<'ebook'|'login'|'dashboard'>(()=>window.location.hash==='#area'?'login':'ebook')
   const [session,setSessionState]=useState<Session|null>(getSession())
+  const [mode,setMode]=useState<'ebook'|'login'|'dashboard'>(()=>window.location.hash==='#area'?(getSession()?'dashboard':'login'):'ebook')
   const [admin,setAdmin]=useState(false)
   useEffect(()=>{if(session){isAdmin(session.access_token).then(setAdmin).catch(()=>setAdmin(false))}},[session])
+  useEffect(()=>{
+    const renew=async()=>{const stored=getSession();if(!stored?.refresh_token)return;try{setSessionState(await refreshSession(stored))}catch{signOut();setSessionState(null);setAdmin(false);if(window.location.hash==='#area')setMode('login')}}
+    renew();const timer=window.setInterval(renew,45*60*1000);return()=>window.clearInterval(timer)
+  },[])
   const login=(s:Session,a:boolean)=>{setSessionState(s);setAdmin(a);setMode('dashboard');window.location.hash='area'}
   const logout=()=>{setSessionState(null);setAdmin(false);setMode('ebook');window.location.hash=''}
+  const openEbook=()=>{setMode('ebook');window.location.hash=''}
   useEffect(()=>{const onHash=()=>{if(window.location.hash==='#area')setMode(session?'dashboard':'login');else setMode('ebook')};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash)},[session])
   if(mode==='login') return <Login onLogin={login}/>
-  if(mode==='dashboard'&&session) return <Dashboard session={session} admin={admin} onLogout={logout}/>
+  if(mode==='dashboard'&&session) return <Dashboard session={session} admin={admin} onLogout={logout} onEbook={openEbook}/>
   return <Ebook/>
 }
 
