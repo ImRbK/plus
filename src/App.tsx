@@ -17,7 +17,7 @@ import {
   P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
   P44_Plateaus, P45_FatLossPlan,
 } from './ebook/lossPages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -426,6 +426,7 @@ function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:
   const [formOpen,setFormOpen]=useState(workouts.length===0),[open,setOpen]=useState<number|null>(null),[ex,setEx]=useState<Record<number,any[]>>({})
   const [saving,setSaving]=useState(false),[message,setMessage]=useState('')
   const [editingId,setEditingId]=useState<number|null>(null),[editName,setEditName]=useState(''),[editing,setEditing]=useState(false)
+  const [completedSessions,setCompletedSessions]=useState<any[]>([])
 
   useEffect(()=>{
     let cancelled=false
@@ -438,6 +439,7 @@ function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:
     loadAllExercises()
     return()=>{cancelled=true}
   },[workouts,session.access_token])
+  useEffect(()=>{getWorkoutSessions(session.access_token,client.id).then(setCompletedSessions).catch(()=>setCompletedSessions([]))},[client.id,session.access_token])
 
   const resetForm=()=>{setName('');setDescription('')}
   const add=async(e:React.FormEvent)=>{
@@ -505,6 +507,7 @@ function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:
         </div>
       </div>
     })}
+    <div style={card}><div style={cardTitle}>HISTÓRICO DE TREINOS CONCLUÍDOS</div>{completedSessions.length===0?<p style={muted}>O cliente ainda não concluiu nenhum treino na plataforma.</p>:<div style={{display:'grid',gap:8}}>{completedSessions.map(item=>{const workout=workouts.find(row=>row.id===item.workout_id);return <div key={item.id} style={adminSessionRow}><div><b>{workout?.name||'Treino'}</b><div style={small}>{formatDate(item.completed_at)}</div></div><span>{item.exercise_logs?.length||0} exercícios</span></div>})}</div>}</div>
   </div>
 }
 
@@ -836,7 +839,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       {!loadingWorkouts&&!workoutError&&workouts.length===0&&<div style={card}><div style={cardTitle}>AINDA SEM TREINO</div><p style={muted}>Ainda não tens nenhum plano de treino atribuído. Quando o teu treinador o criar, aparecerá aqui automaticamente.</p></div>}
       {!loadingWorkouts&&!workoutError&&workouts.map((workout:any,index:number)=>{
         const exercises=exercisesByWorkout[String(workout.id)]||[]
-        return <ClientWorkoutCard key={workout.id} workout={workout} exercises={exercises} index={index}/>
+        return <ClientWorkoutCard key={workout.id} workout={workout} exercises={exercises} index={index} client={client} session={session}/>
       })}
     </div>}
 
@@ -890,9 +893,27 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   </div>
 }
 
-function ClientWorkoutCard({workout,exercises,index}:{workout:any,exercises:any[],index:number}){
+function ClientWorkoutCard({workout,exercises,index,client,session}:{workout:any,exercises:any[],index:number,client:any,session:Session}){
   const [openExercise,setOpenExercise]=useState<number|null>(exercises[0]?.id??null)
+  const [entries,setEntries]=useState<Record<string,{weight:string,reps:string,rir:string}>>({})
+  const [history,setHistory]=useState<any[]>([])
+  const [saving,setSaving]=useState(false)
+  const [message,setMessage]=useState('')
   const totalSets=exercises.reduce((sum,item)=>sum+(Number(item.sets)||0),0)
+  const loadHistory=useCallback(async()=>{try{setHistory(await getWorkoutSessions(session.access_token,client.id,workout.id))}catch(e:any){setMessage(e.message||'Não foi possível carregar o histórico.')}},[session.access_token,client.id,workout.id])
+  useEffect(()=>{loadHistory()},[loadHistory])
+  const updateEntry=(id:number,key:'weight'|'reps'|'rir',value:string)=>setEntries(current=>({...current,[id]:{weight:'',reps:'',rir:'',...current[id],[key]:value}}))
+  const finish=async()=>{
+    setSaving(true);setMessage('')
+    try{
+      const completed=exercises.filter(exercise=>entries[exercise.id]?.reps)
+      if(!completed.length)throw new Error('Regista as repetições de pelo menos um exercício.')
+      const workoutSession=await createWorkoutSession(session.access_token,{client_id:client.id,workout_id:workout.id,completed_at:new Date().toISOString()})
+      if(!workoutSession?.id)throw new Error('Não foi possível criar a sessão de treino.')
+      await createExerciseLogs(session.access_token,completed.map(exercise=>({session_id:workoutSession.id,exercise_id:exercise.id,weight:entries[exercise.id].weight===''?null:Number(entries[exercise.id].weight),reps:Number(entries[exercise.id].reps),rir:entries[exercise.id].rir===''?null:Number(entries[exercise.id].rir)})))
+      setEntries({});setMessage('Treino concluído e progressão guardada.');await loadHistory()
+    }catch(e:any){setMessage(e.message||'Não foi possível guardar o treino.')}finally{setSaving(false)}
+  }
   return <div style={clientWorkoutPlan}>
     <div style={workoutPlanAccent}/>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:16,flexWrap:'wrap'}}>
@@ -915,10 +936,13 @@ function ClientWorkoutCard({workout,exercises,index}:{workout:any,exercises:any[
           </div>
           {isOpen&&<div style={exerciseDetails}>
             {exercise.notes?<><div style={{...labelStyle,color:'#E7C75E'}}>NOTAS DO TREINADOR</div><p style={{...text,margin:'8px 0 0',lineHeight:1.65}}>{exercise.notes}</p></>:<p style={{...muted,margin:0}}>Mantém uma execução controlada e respeita as séries, repetições e descanso indicados.</p>}
+            <div style={exerciseLogGrid}><label style={labelStyle}>CARGA (KG)<input value={entries[exercise.id]?.weight||''} onChange={e=>updateEntry(exercise.id,'weight',e.target.value)} type="number" min="0" step=".5" placeholder="Ex.: 80" style={{...inputStyle,width:'100%',marginTop:6}}/></label><label style={labelStyle}>REPETIÇÕES<input value={entries[exercise.id]?.reps||''} onChange={e=>updateEntry(exercise.id,'reps',e.target.value)} type="number" min="1" placeholder="Ex.: 10" style={{...inputStyle,width:'100%',marginTop:6}}/></label><label style={labelStyle}>RIR<input value={entries[exercise.id]?.rir||''} onChange={e=>updateEntry(exercise.id,'rir',e.target.value)} type="number" min="0" max="10" placeholder="Ex.: 2" style={{...inputStyle,width:'100%',marginTop:6}}/></label></div>
           </div>}
         </div>
       })}
     </div>}
+    {exercises.length>0&&<div style={{marginTop:16}}><button onClick={finish} disabled={saving} style={{...goldButton,width:'100%'}}>{saving?'A GUARDAR…':'CONCLUIR TREINO E GUARDAR PROGRESSÃO'}</button>{message&&<div style={{...(message.includes('guardada')?successStyle:errorStyle),marginTop:9}}>{message}</div>}</div>}
+    <div style={{marginTop:18,paddingTop:16,borderTop:'1px solid rgba(255,255,255,.08)'}}><div style={cardTitle}>ÚLTIMAS SESSÕES</div>{history.length===0?<p style={muted}>Ainda não existem sessões concluídas.</p>:<div style={{display:'grid',gap:7}}>{history.slice(0,5).map(item=><div key={item.id} style={sessionHistoryRow}><b>{formatDate(item.completed_at)}</b><span>{item.exercise_logs?.length||0} exercícios registados</span></div>)}</div>}</div>
   </div>
 }
 
@@ -1176,6 +1200,9 @@ const nextCheckinCard:any={cursor:'pointer',width:'100%'}
 const progressTrack:any={height:5,background:'rgba(255,255,255,.08)',overflow:'hidden',marginTop:4}
 const progressFill:any={height:'100%',background:GOLD,transition:'width .3s ease'}
 const checkinLocked:any={border:'1px solid rgba(212,175,55,.2)',background:'rgba(212,175,55,.06)',padding:'11px 12px',fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,.7)'}
+const exerciseLogGrid:any={display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8,marginTop:14}
+const sessionHistoryRow:any={display:'flex',justifyContent:'space-between',gap:10,border:'1px solid rgba(255,255,255,.07)',background:'rgba(0,0,0,.18)',padding:'10px 12px',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.6)'}
+const adminSessionRow:any={display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.16)',padding:'12px 14px',fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,.65)'}
 const controlGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}
 const controlCard:any={background:'linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.16))',border:'1px solid rgba(255,255,255,.08)',padding:18,textAlign:'left',color:WHITE,cursor:'pointer',display:'grid',gap:5,fontFamily:"'Inter',sans-serif"}
 const controlLabel:any={fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.15em',color:GOLD}
