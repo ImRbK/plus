@@ -413,7 +413,7 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
       <div><div style={eyebrow}>CLIENTE</div><h2 style={{...title,fontSize:36,margin:4}}>{client.full_name}</h2></div>
     </div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-      {([['overview','PERFIL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-INS']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{...ghostButton,color:tab===k?GOLD:undefined,borderColor:tab===k?'rgba(212,175,55,.35)':undefined}}>{l}</button>)}
+      {([['overview','PERFIL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-INS']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{...ghostButton,color:tab===k?GOLD:undefined,borderColor:tab===k?'rgba(212,175,55,.48)':undefined,background:tab===k?'rgba(212,175,55,.11)':ghostButton.background,boxShadow:tab===k?'0 0 0 1px rgba(212,175,55,.08) inset':ghostButton.boxShadow}}>{l}</button>)}
     </div>
     {message && <div style={messageStyle}>{message}</div>}
     {busy && <div style={muted}>A carregar…</div>}
@@ -876,11 +876,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       <button onClick={()=>setTab('tasks')} style={{...dashboardMetricCard,...nextCheckinCard,borderColor:pendingTasks.length?'rgba(212,175,55,.4)':'rgba(255,255,255,.08)'}}><span>TAREFAS</span><b>{pendingTasks.length}</b><small>{pendingTasks.length?'Tarefas por concluir':'Tudo concluído'}</small></button>
     </div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-      <button onClick={()=>setTab('profile')} style={{...ghostButton,color:tab==='profile'?GOLD:undefined,borderColor:tab==='profile'?'rgba(212,175,55,.35)':undefined}}>PERFIL</button>
-      <button onClick={()=>setTab('workout')} style={{...ghostButton,color:tab==='workout'?GOLD:undefined,borderColor:tab==='workout'?'rgba(212,175,55,.35)':undefined}}>TREINO</button>
-      <button onClick={()=>setTab('nutrition')} style={{...ghostButton,color:tab==='nutrition'?GOLD:undefined,borderColor:tab==='nutrition'?'rgba(212,175,55,.35)':undefined}}>NUTRIÇÃO</button>
-      <button onClick={()=>setTab('checkin')} style={{...ghostButton,color:tab==='checkin'?GOLD:undefined,borderColor:tab==='checkin'?'rgba(212,175,55,.35)':undefined}}>CHECK-IN</button>
-      <button onClick={()=>setTab('tasks')} style={{...ghostButton,color:tab==='tasks'?GOLD:undefined,borderColor:tab==='tasks'?'rgba(212,175,55,.35)':undefined}}>TAREFAS {pendingTasks.length?`(${pendingTasks.length})`:''}</button>
+      {([['profile','PERFIL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-IN'],['tasks',`TAREFAS${pendingTasks.length?` (${pendingTasks.length})`:''}`]] as const).map(([key,label])=><button key={key} onClick={()=>setTab(key)} style={{...ghostButton,color:tab===key?GOLD:undefined,borderColor:tab===key?'rgba(212,175,55,.48)':undefined,background:tab===key?'rgba(212,175,55,.11)':ghostButton.background,boxShadow:tab===key?'0 0 0 1px rgba(212,175,55,.08) inset':ghostButton.boxShadow}}>{label}</button>)}
     </div>
 
     {tab==='profile'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18}}>
@@ -1200,25 +1196,25 @@ export default function App(){
 }
 
 const shellStyle:any={minHeight:'100vh',background:'radial-gradient(circle at top,#1c1c1c,#080808 60%)',display:'grid',placeItems:'center',padding:24,color:WHITE}
-const panelStyle:any={width:'min(440px,100%)',background:'#111',border:'1px solid rgba(212,175,55,.18)',padding:'40px',boxShadow:'0 24px 70px rgba(0,0,0,.5)'}
+const panelStyle:any={width:'min(440px,100%)',background:'linear-gradient(145deg,#151515,#0d0d0d)',border:'1px solid rgba(212,175,55,.22)',borderRadius:18,padding:'40px',boxShadow:'0 28px 90px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.025) inset'}
 const brand:any={fontFamily:"'League Spartan',sans-serif",fontWeight:900,letterSpacing:'.22em',fontSize:20,color:GOLD}
 const eyebrow:any={fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.18em',color:GOLD,marginTop:36}
 const title:any={fontFamily:"'League Spartan',sans-serif",fontSize:'clamp(30px,5vw,48px)',lineHeight:.95,textTransform:'uppercase',margin:'10px 0 12px',color:WHITE}
 const muted:any={color:'rgba(255,255,255,.48)',fontFamily:"'Inter',sans-serif",fontSize:13,lineHeight:1.6}
-const inputStyle:any={background:'#0b0b0b',border:'1px solid rgba(255,255,255,.12)',color:WHITE,padding:'13px 14px',fontSize:14,outline:'none'}
-const goldButton:any={background:GOLD,border:'none',color:'#0b0b0b',fontFamily:"'League Spartan',sans-serif",fontWeight:800,letterSpacing:'.12em',padding:'14px',cursor:'pointer'}
-const ghostButton:any={background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.1)',color:'rgba(255,255,255,.65)',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:700,letterSpacing:'.14em',padding:'6px 10px',cursor:'pointer'}
-const dangerButton:any={background:'transparent',border:'1px solid rgba(192,57,43,.35)',color:'#e7a19a',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:700,letterSpacing:'.12em',padding:'7px 9px',cursor:'pointer'}
-const closeButton:any={background:'transparent',border:'1px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.65)',fontSize:22,width:34,height:34,cursor:'pointer'}
+const inputStyle:any={background:'rgba(5,5,5,.72)',border:'1px solid rgba(255,255,255,.14)',borderRadius:8,color:WHITE,padding:'13px 14px',fontSize:14,outline:'none',boxShadow:'0 1px 0 rgba(255,255,255,.025) inset'}
+const goldButton:any={background:'linear-gradient(135deg,#E2C45A,#C89E28)',border:'1px solid rgba(255,226,128,.45)',borderRadius:8,color:'#0b0b0b',fontFamily:"'League Spartan',sans-serif",fontWeight:900,letterSpacing:'.12em',padding:'13px 16px',minHeight:44,cursor:'pointer',boxShadow:'0 8px 22px rgba(212,175,55,.18),0 1px 0 rgba(255,255,255,.35) inset'}
+const ghostButton:any={background:'linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.025))',border:'1px solid rgba(255,255,255,.14)',borderRadius:7,color:'rgba(255,255,255,.78)',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:800,letterSpacing:'.13em',padding:'9px 12px',minHeight:36,cursor:'pointer',boxShadow:'0 4px 14px rgba(0,0,0,.16)'}
+const dangerButton:any={background:'rgba(192,57,43,.07)',border:'1px solid rgba(224,85,72,.42)',borderRadius:7,color:'#f1aaa3',fontFamily:"'League Spartan',sans-serif",fontSize:9,fontWeight:800,letterSpacing:'.11em',padding:'9px 11px',minHeight:36,cursor:'pointer'}
+const closeButton:any={background:'rgba(255,255,255,.045)',border:'1px solid rgba(255,255,255,.14)',borderRadius:9,color:'rgba(255,255,255,.72)',fontSize:22,width:38,height:38,cursor:'pointer'}
 const labelStyle:any={fontFamily:"'League Spartan',sans-serif",fontSize:9,letterSpacing:'.12em',color:'rgba(255,255,255,.45)'}
 const successStyle:any={background:'rgba(46,160,67,.12)',border:'1px solid rgba(46,160,67,.3)',color:'#9fe0a7',padding:'10px 12px',fontSize:12}
 const formGrid:any={display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:10}
 const modalBackdrop:any={position:'fixed',inset:0,background:'rgba(0,0,0,.72)',backdropFilter:'blur(8px)',display:'grid',placeItems:'center',padding:20,zIndex:300}
-const modal:any={width:'min(680px,100%)',maxHeight:'90vh',overflowY:'auto',background:'#111',border:'1px solid rgba(212,175,55,.2)',padding:28,boxShadow:'0 30px 100px rgba(0,0,0,.65)'}
+const modal:any={width:'min(680px,100%)',maxHeight:'90vh',overflowY:'auto',background:'linear-gradient(145deg,#151515,#0c0c0c)',border:'1px solid rgba(212,175,55,.22)',borderRadius:16,padding:28,boxShadow:'0 30px 100px rgba(0,0,0,.7)'}
 const errorStyle:any={background:'rgba(192,57,43,.12)',border:'1px solid rgba(192,57,43,.3)',color:'#f0a49b',padding:'10px 12px',fontSize:12}
 const dashboardShell:any={minHeight:'100vh',background:'linear-gradient(135deg,#0b0b0b,#171717 55%,#0b0b0b)',color:WHITE}
 const dashHeader:any={height:64,borderBottom:'1px solid rgba(212,175,55,.12)',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 24px',background:'rgba(11,11,11,.88)',backdropFilter:'blur(12px)'}
-const card:any={background:'rgba(255,255,255,.035)',border:'1px solid rgba(255,255,255,.08)',padding:24}
+const card:any={background:'linear-gradient(145deg,rgba(255,255,255,.05),rgba(255,255,255,.018))',border:'1px solid rgba(255,255,255,.09)',borderRadius:12,padding:24,boxShadow:'0 12px 34px rgba(0,0,0,.18),0 1px 0 rgba(255,255,255,.025) inset'}
 const cardTitle:any={fontFamily:"'League Spartan',sans-serif",fontSize:11,letterSpacing:'.16em',color:GOLD,marginBottom:18}
 const row:any={display:'flex',justifyContent:'space-between',alignItems:'center',padding:'14px 0',borderBottom:'1px solid rgba(255,255,255,.06)',fontFamily:"'Inter',sans-serif"}
 const small:any={fontSize:11,color:'rgba(255,255,255,.4)',marginTop:4}
