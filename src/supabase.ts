@@ -239,6 +239,9 @@ export async function getSupplements(token:string,clientId:string){return await 
 export async function createSupplement(token:string,data:any){const rows=await request('/rest/v1/client_supplements',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)},token);return rows?.[0]??null}
 export async function updateSupplement(token:string,id:number,data:any){const rows=await request(`/rest/v1/client_supplements?id=eq.${id}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(data)},token);return rows?.[0]??null}
 export async function deleteSupplement(token:string,id:number){await request(`/rest/v1/client_supplements?id=eq.${id}`,{method:'DELETE'},token)}
+export async function getClientIntake(token:string,clientId:string){const rows=await request(`/rest/v1/client_intakes?client_id=eq.${encodeURIComponent(clientId)}&select=*`,{method:'GET'},token);return rows?.[0]??null}
+export async function saveClientIntake(token:string,data:any){const rows=await request('/rest/v1/client_intakes?on_conflict=client_id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=representation'},body:JSON.stringify(data)},token);return rows?.[0]??null}
+export async function reviewClientIntake(token:string,clientId:string){const rows=await request(`/rest/v1/client_intakes?client_id=eq.${encodeURIComponent(clientId)}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({reviewed_at:new Date().toISOString()})},token);return rows?.[0]??null}
 
 export async function getNutritionPlans(token: string, clientId: string) {
   return await request(`/rest/v1/nutrition_plans?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.asc`, {method:'GET'}, token)
