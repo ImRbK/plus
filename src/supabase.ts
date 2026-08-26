@@ -53,6 +53,21 @@ export async function signIn(email: string, password: string): Promise<Session> 
   return session
 }
 
+export async function refreshSession(session: Session): Promise<Session> {
+  if (!session.refresh_token) return session
+  const data = await request('/auth/v1/token?grant_type=refresh_token', {
+    method: 'POST',
+    body: JSON.stringify({ refresh_token: session.refresh_token }),
+  })
+  const refreshed: Session = {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token || session.refresh_token,
+    user: { id: data.user.id, email: data.user.email },
+  }
+  setSession(refreshed)
+  return refreshed
+}
+
 
 export async function createClientViaFunction(token: string, profile: {
   email: string
