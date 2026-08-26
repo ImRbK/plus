@@ -183,6 +183,21 @@ export async function deleteExercise(token: string, id: number) {
   await request(`/rest/v1/exercises?id=eq.${id}`, {method:'DELETE'}, token)
 }
 
+export async function getWorkoutSessions(token: string, clientId: string, workoutId?: number) {
+  const workoutFilter=workoutId==null?'':`&workout_id=eq.${workoutId}`
+  return await request(`/rest/v1/workout_sessions?client_id=eq.${encodeURIComponent(clientId)}${workoutFilter}&select=*,exercise_logs(*)&order=completed_at.desc`, {method:'GET'}, token)
+}
+
+export async function createWorkoutSession(token: string, data: any) {
+  const rows=await request('/rest/v1/workout_sessions', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0]??null
+}
+
+export async function createExerciseLogs(token: string, data: any[]) {
+  if(!data.length)return []
+  return await request('/rest/v1/exercise_logs', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+}
+
 export async function getNutritionPlans(token: string, clientId: string) {
   return await request(`/rest/v1/nutrition_plans?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.asc`, {method:'GET'}, token)
 }
