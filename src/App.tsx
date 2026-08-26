@@ -80,6 +80,25 @@ async function updateClientEmailViaFunction(token: string, userId: string, email
 
 const GOLD = '#D4AF37'
 const WHITE = '#FFFFFF'
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function dateOnly(value?: string | null) {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatDate(value?: string | null) {
+  const date = dateOnly(value)
+  return date ? new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' }).format(date) : '—'
+}
+
+function nextCheckinDate(checkins: any[]) {
+  const latest = dateOnly(checkins[0]?.created_at)
+  const next = latest ? new Date(latest.getTime() + 7 * DAY_MS) : new Date()
+  next.setHours(0, 0, 0, 0)
+  return next
+}
 const SECTIONS = [
   { label: 'Introdução', range: [0, 3] }, { label: 'Ganhar Massa', range: [4, 16] },
   { label: 'Treino', range: [17, 24] }, { label: 'FAQ', range: [25, 27] },
@@ -649,7 +668,7 @@ function AdminCheckinCard({item,index,session,onRefresh}:{item:any,index:number,
   }
   return <div style={{...card,borderColor:item.reviewed_at?'rgba(76,166,106,.2)':'rgba(212,175,55,.22)'}}>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:14,flexWrap:'wrap'}}><div><div style={{display:'flex',gap:8,alignItems:'center'}}><div style={cardTitle}>CHECK-IN {String(index).padStart(2,'0')}</div><span style={{...reviewBadge,color:item.reviewed_at?'#81c990':'#e4bd54',borderColor:item.reviewed_at?'rgba(76,166,106,.3)':'rgba(212,175,55,.25)'}}>{item.reviewed_at?'REVISTO':'NOVO'}</span></div><div style={small}>{item.created_at?.slice(0,10)||'—'}</div></div><button onClick={async()=>{if(window.confirm('Eliminar este check-in?')){await deleteCheckIn(session.access_token,item.id);onRefresh()}}} style={dangerButton}>ELIMINAR</button></div>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:8,margin:'17px 0'}}><div style={checkinMetric}><span>PESO</span><b>{item.weight??'—'} kg</b></div><div style={checkinMetric}><span>TREINO</span><b>{item.training_rating??'—'}/10</b></div><div style={checkinMetric}><span>NUTRIÇÃO</span><b>{item.nutrition_rating??'—'}/10</b></div><div style={checkinMetric}><span>SONO</span><b>{item.sleep_rating??'—'}/10</b></div></div>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(105px,1fr))',gap:8,margin:'17px 0'}}><div style={checkinMetric}><span>PESO</span><b>{item.weight??'—'} kg</b></div><div style={checkinMetric}><span>TREINO</span><b>{item.training_rating??'—'}/10</b></div><div style={checkinMetric}><span>NUTRIÇÃO</span><b>{item.nutrition_rating??'—'}/10</b></div><div style={checkinMetric}><span>SONO</span><b>{item.sleep_rating??'—'}/10</b></div><div style={checkinMetric}><span>ENERGIA</span><b>{item.energy_rating??'—'}/10</b></div><div style={checkinMetric}><span>APETITE</span><b>{item.appetite_rating??'—'}/10</b></div></div>
     {item.notes&&<div style={clientNote}><div style={labelStyle}>OBSERVAÇÕES DO CLIENTE</div><p style={{...text,margin:'8px 0 0'}}>{item.notes}</p></div>}
     <div style={{marginTop:14}}><label style={labelStyle}>RESPOSTA DO TREINADOR<textarea value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Ex.: Excelente semana. Mantém as calorias e tenta melhorar o sono…" style={{...inputStyle,width:'100%',minHeight:95,resize:'vertical',marginTop:7}}/></label><button onClick={save} disabled={saving||!feedback.trim()} style={{...goldButton,width:'100%',marginTop:8}}>{saving?'A GUARDAR…':item.reviewed_at?'ATUALIZAR FEEDBACK':'ENVIAR FEEDBACK E MARCAR COMO REVISTO'}</button></div>
     {message&&<div style={{...(message.includes('enviado')?successStyle:errorStyle),marginTop:10}}>{message}</div>}
@@ -778,7 +797,21 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
 
   if(!client) return <div style={{...card,marginTop:28}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>
 
+  const currentWeight=Number(client.current_weight??client.initial_weight)
+  const initialWeight=Number(client.initial_weight)
+  const goalWeight=Number(client.goal_weight)
+  const hasProgressData=Number.isFinite(currentWeight)&&Number.isFinite(initialWeight)&&Number.isFinite(goalWeight)&&goalWeight!==initialWeight
+  const progressPercent=hasProgressData?Math.max(0,Math.min(100,Math.round(((currentWeight-initialWeight)/(goalWeight-initialWeight))*100))):0
+  const nextCheckin=nextCheckinDate(clientCheckins)
+  const checkinDue=nextCheckin.getTime()<=new Date().setHours(0,0,0,0)
+
   return <div style={{display:'grid',gap:18,marginTop:28}}>
+    <div style={clientDashboardGrid}>
+      <div style={dashboardMetricCard}><span>PESO ATUAL</span><b>{Number.isFinite(currentWeight)?currentWeight:'—'} <small>kg</small></b><small>Início: {client.initial_weight??'—'} kg</small></div>
+      <div style={dashboardMetricCard}><span>OBJETIVO</span><b>{client.goal_weight??'—'} <small>kg</small></b><small>{client.goal||'Objetivo definido pelo treinador'}</small></div>
+      <div style={dashboardMetricCard}><span>PROGRESSO</span><b>{hasProgressData?`${progressPercent}%`:'—'}</b><div style={progressTrack}><div style={{...progressFill,width:`${progressPercent}%`}}/></div></div>
+      <button onClick={()=>setTab('checkin')} style={{...dashboardMetricCard,...nextCheckinCard,borderColor:checkinDue?'rgba(212,175,55,.45)':'rgba(255,255,255,.08)'}}><span>PRÓXIMO CHECK-IN</span><b>{checkinDue?'DISPONÍVEL':formatDate(nextCheckin.toISOString())}</b><small>{checkinDue?'Preenche o acompanhamento desta semana':'Abre 7 dias após o último envio'}</small></button>
+    </div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
       <button onClick={()=>setTab('profile')} style={{...ghostButton,color:tab==='profile'?GOLD:undefined,borderColor:tab==='profile'?'rgba(212,175,55,.35)':undefined}}>PERFIL</button>
       <button onClick={()=>setTab('workout')} style={{...ghostButton,color:tab==='workout'?GOLD:undefined,borderColor:tab==='workout'?'rgba(212,175,55,.35)':undefined}}>TREINO</button>
@@ -894,22 +927,28 @@ function ClientCheckinView({client,session,checkins,loading,error,onRefresh,onPr
   const [training,setTraining]=useState('')
   const [nutrition,setNutrition]=useState('')
   const [sleep,setSleep]=useState('')
+  const [energy,setEnergy]=useState('')
+  const [appetite,setAppetite]=useState('')
   const [notes,setNotes]=useState('')
   const [saving,setSaving]=useState(false)
   const [message,setMessage]=useState('')
   const ratings=Array.from({length:10},(_,i)=>i+1)
+  const nextCheckin=nextCheckinDate(checkins)
+  const checkinDue=nextCheckin.getTime()<=new Date().setHours(0,0,0,0)
 
   const submit=async(e:React.FormEvent)=>{
     e.preventDefault();setSaving(true);setMessage('')
     try{
-      if(!training||!nutrition||!sleep)throw new Error('Avalia o treino, a alimentação e o sono antes de enviar.')
+      if(!checkinDue)throw new Error(`O próximo check-in fica disponível em ${formatDate(nextCheckin.toISOString())}.`)
+      if(!training||!nutrition||!sleep||!energy||!appetite)throw new Error('Preenche todas as avaliações antes de enviar.')
       const numericWeight=weight?Number(weight):null
-      await createCheckIn(session.access_token,{client_id:client.id,weight:numericWeight,training_rating:Number(training),nutrition_rating:Number(nutrition),sleep_rating:Number(sleep),notes:notes.trim()||null})
+      if(numericWeight!==null&&(!Number.isFinite(numericWeight)||numericWeight<=0))throw new Error('Introduz um peso válido.')
+      await createCheckIn(session.access_token,{client_id:client.id,weight:numericWeight,training_rating:Number(training),nutrition_rating:Number(nutrition),sleep_rating:Number(sleep),energy_rating:Number(energy),appetite_rating:Number(appetite),notes:notes.trim()||null})
       if(numericWeight!==null){
         await addWeightProgress(session.access_token,{client_id:client.id,weight:numericWeight,recorded_at:new Date().toISOString().slice(0,10)})
         await updateClientProfile(session.access_token,client.id,{current_weight:numericWeight})
       }
-      setTraining('');setNutrition('');setSleep('');setNotes('')
+      setTraining('');setNutrition('');setSleep('');setEnergy('');setAppetite('');setNotes('')
       setMessage('Check-in enviado com sucesso. O teu treinador já o pode consultar.')
       await Promise.all([onRefresh(),onProgressUpdated()])
     }catch(e:any){setMessage(e.message||'Não foi possível enviar o check-in.')}finally{setSaving(false)}
@@ -920,14 +959,17 @@ function ClientCheckinView({client,session,checkins,loading,error,onRefresh,onPr
       <div style={eyebrow}>ACOMPANHAMENTO SEMANAL</div>
       <h2 style={{...title,fontSize:30,marginBottom:8}}>Como correu a tua semana?</h2>
       <p style={{...muted,marginTop:0}}>Responde com sinceridade. Esta informação ajuda o teu treinador a ajustar o plano.</p>
+      {!loading&&!checkinDue&&<div style={checkinLocked}>Já enviaste o check-in desta semana. O próximo fica disponível em <b>{formatDate(nextCheckin.toISOString())}</b>.</div>}
       <form onSubmit={submit} style={{display:'grid',gap:16,marginTop:24}}>
         <label style={labelStyle}>PESO ATUAL (KG)<input value={weight} onChange={e=>setWeight(e.target.value)} type="number" min="0" step=".1" placeholder="Ex.: 74.5" style={{...inputStyle,width:'100%',marginTop:7}}/></label>
         <RatingField label="COMO CORREU O TREINO?" value={training} onChange={setTraining} ratings={ratings}/>
         <RatingField label="COMO CORREU A ALIMENTAÇÃO?" value={nutrition} onChange={setNutrition} ratings={ratings}/>
         <RatingField label="COMO ESTEVE O SONO?" value={sleep} onChange={setSleep} ratings={ratings}/>
-        <label style={labelStyle}>OBSERVAÇÕES<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Dificuldades, progressos, energia, fome, dores ou algo que queiras partilhar…" style={{...inputStyle,width:'100%',minHeight:110,resize:'vertical',marginTop:7}}/></label>
+        <RatingField label="COMO ESTEVE A ENERGIA?" value={energy} onChange={setEnergy} ratings={ratings}/>
+        <RatingField label="COMO ESTEVE O APETITE?" value={appetite} onChange={setAppetite} ratings={ratings}/>
+        <label style={labelStyle}>OBSERVAÇÕES<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Dificuldades, progressos, fome, dores ou algo que queiras partilhar…" style={{...inputStyle,width:'100%',minHeight:110,resize:'vertical',marginTop:7}}/></label>
         {message&&<div style={message.includes('sucesso')?successStyle:errorStyle}>{message}</div>}
-        <button disabled={saving} style={goldButton}>{saving?'A ENVIAR…':'ENVIAR CHECK-IN'}</button>
+        <button disabled={saving||loading||!checkinDue} style={goldButton}>{saving?'A ENVIAR…':checkinDue?'ENVIAR CHECK-IN':'CHECK-IN SEMANAL JÁ ENVIADO'}</button>
       </form>
     </div>
 
@@ -937,7 +979,7 @@ function ClientCheckinView({client,session,checkins,loading,error,onRefresh,onPr
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}><div style={cardTitle}>HISTÓRICO</div><button onClick={onRefresh} disabled={loading} style={ghostButton}>ATUALIZAR</button></div>
         {loading?<p style={muted}>A carregar check-ins…</p>:error?<div style={errorStyle}>{error}</div>:checkins.length===0?<p style={muted}>Ainda não enviaste nenhum check-in.</p>:<div style={{display:'grid',gap:9}}>{checkins.map((item,index)=><div key={item.id} style={clientCheckinCard}>
           <div style={{display:'flex',justifyContent:'space-between',gap:10}}><div style={{display:'flex',gap:7,alignItems:'center'}}><strong style={{fontFamily:"'League Spartan',sans-serif"}}>CHECK-IN {String(checkins.length-index).padStart(2,'0')}</strong><span style={{...reviewBadge,color:item.reviewed_at?'#81c990':'#e4bd54'}}>{item.reviewed_at?'RESPONDIDO':'A AGUARDAR'}</span></div><span style={small}>{item.created_at?.slice(0,10)||'—'}</span></div>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}><span style={checkinScore}>TREINO <b>{item.training_rating??'—'}/10</b></span><span style={checkinScore}>NUTRIÇÃO <b>{item.nutrition_rating??'—'}/10</b></span><span style={checkinScore}>SONO <b>{item.sleep_rating??'—'}/10</b></span></div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}><span style={checkinScore}>TREINO <b>{item.training_rating??'—'}/10</b></span><span style={checkinScore}>NUTRIÇÃO <b>{item.nutrition_rating??'—'}/10</b></span><span style={checkinScore}>SONO <b>{item.sleep_rating??'—'}/10</b></span><span style={checkinScore}>ENERGIA <b>{item.energy_rating??'—'}/10</b></span><span style={checkinScore}>APETITE <b>{item.appetite_rating??'—'}/10</b></span></div>
           <div style={{...small,marginTop:9}}>Peso: {item.weight??'—'} kg</div>
           {item.notes&&<p style={{...muted,margin:'9px 0 0'}}>{item.notes}</p>}
           {item.coach_feedback&&<div style={coachReply}><div style={labelStyle}>RESPOSTA DO TREINADOR</div><p style={{...text,margin:'8px 0 0'}}>{item.coach_feedback}</p></div>}
@@ -1128,6 +1170,12 @@ const reviewBadge:any={border:'1px solid rgba(212,175,55,.2)',padding:'3px 5px',
 const checkinMetric:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.18)',padding:12,display:'grid',gap:5,fontFamily:"'League Spartan',sans-serif",fontSize:9,color:'rgba(255,255,255,.4)'}
 const clientNote:any={borderLeft:`3px solid ${GOLD}`,background:'rgba(212,175,55,.045)',padding:'12px 14px'}
 const coachReply:any={marginTop:12,border:'1px solid rgba(76,166,106,.22)',background:'rgba(76,166,106,.07)',padding:'12px 13px'}
+const clientDashboardGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10}
+const dashboardMetricCard:any={border:'1px solid rgba(255,255,255,.08)',background:'linear-gradient(145deg,rgba(255,255,255,.045),rgba(0,0,0,.18))',padding:17,textAlign:'left',color:WHITE,display:'grid',gap:7,fontFamily:"'League Spartan',sans-serif",minHeight:116}
+const nextCheckinCard:any={cursor:'pointer',width:'100%'}
+const progressTrack:any={height:5,background:'rgba(255,255,255,.08)',overflow:'hidden',marginTop:4}
+const progressFill:any={height:'100%',background:GOLD,transition:'width .3s ease'}
+const checkinLocked:any={border:'1px solid rgba(212,175,55,.2)',background:'rgba(212,175,55,.06)',padding:'11px 12px',fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,.7)'}
 const controlGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}
 const controlCard:any={background:'linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.16))',border:'1px solid rgba(255,255,255,.08)',padding:18,textAlign:'left',color:WHITE,cursor:'pointer',display:'grid',gap:5,fontFamily:"'Inter',sans-serif"}
 const controlLabel:any={fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.15em',color:GOLD}
