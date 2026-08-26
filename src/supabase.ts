@@ -222,6 +222,23 @@ export async function updateClientTask(token: string, id: number, data: Record<s
 export async function deleteClientTask(token: string, id: number) {
   await request(`/rest/v1/client_tasks?id=eq.${id}`, {method:'DELETE'}, token)
 }
+export async function getMonthlyAssessments(token:string,clientId:string){return await request(`/rest/v1/monthly_assessments?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=assessment_date.desc`,{method:'GET'},token)}
+export async function createMonthlyAssessment(token:string,data:any){const rows=await request('/rest/v1/monthly_assessments',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)},token);return rows?.[0]??null}
+export async function updateMonthlyAssessment(token:string,id:number,data:any){const rows=await request(`/rest/v1/monthly_assessments?id=eq.${id}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(data)},token);return rows?.[0]??null}
+export async function deleteMonthlyAssessment(token:string,id:number){await request(`/rest/v1/monthly_assessments?id=eq.${id}`,{method:'DELETE'},token)}
+export async function uploadAssessmentPhoto(token:string,clientId:string,side:'front'|'side'|'back',file:File){
+  if(!file.type.startsWith('image/'))throw new Error('Seleciona um ficheiro de imagem.')
+  if(file.size>5*1024*1024)throw new Error('A fotografia não pode ter mais de 5 MB.')
+  const extension=(file.name.split('.').pop()||'jpg').replace(/[^a-z0-9]/gi,'').toLowerCase()
+  const path=`${clientId}/assessments/${Date.now()}-${side}.${extension}`
+  const response=await fetch(`${SUPABASE_URL}/storage/v1/object/client-progress/${path}`,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${token}`,'Content-Type':file.type,'x-upsert':'true'},body:file})
+  const data=await response.json().catch(()=>null);if(!response.ok)throw new Error(data?.message||data?.error||'Não foi possível enviar a fotografia.')
+  return `${SUPABASE_URL}/storage/v1/object/public/client-progress/${path}`
+}
+export async function getSupplements(token:string,clientId:string){return await request(`/rest/v1/client_supplements?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=is_active.desc,created_at.asc`,{method:'GET'},token)}
+export async function createSupplement(token:string,data:any){const rows=await request('/rest/v1/client_supplements',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)},token);return rows?.[0]??null}
+export async function updateSupplement(token:string,id:number,data:any){const rows=await request(`/rest/v1/client_supplements?id=eq.${id}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(data)},token);return rows?.[0]??null}
+export async function deleteSupplement(token:string,id:number){await request(`/rest/v1/client_supplements?id=eq.${id}`,{method:'DELETE'},token)}
 
 export async function getNutritionPlans(token: string, clientId: string) {
   return await request(`/rest/v1/nutrition_plans?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.asc`, {method:'GET'}, token)
