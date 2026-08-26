@@ -17,7 +17,7 @@ import {
   P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
   P44_Plateaus, P45_FatLossPlan,
 } from './ebook/lossPages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, deleteWorkout, createExercise, deleteExercise, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -303,6 +303,7 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
   const [checkins,setCheckins]=useState<any[]>([])
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
+  const [photoBusy,setPhotoBusy]=useState(false)
   const [profile,setProfile]=useState({full_name:client.full_name||'',email:client.email||'',initial_weight:client.initial_weight??'',current_weight:client.current_weight??'',height:client.height??'',goal_weight:client.goal_weight??'',goal:client.goal||'',start_date:client.start_date||''})
   const load=async()=>{
     setBusy(true)
@@ -343,6 +344,17 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
 
   const messageStyle = message.startsWith('Erro') || message.includes('não') ? errorStyle : successStyle
 
+  const saveBeforePhoto=async(file?:File)=>{
+    if(!file)return
+    setPhotoBusy(true);setMessage('')
+    try{
+      const before_photo_url=await uploadBeforePhoto(session.access_token,client.id,file)
+      const updated=await updateClientProfile(session.access_token,client.id,{before_photo_url})
+      if(updated)onClientUpdated(updated)
+      setMessage('Fotografia inicial guardada com sucesso.')
+    }catch(e:any){setMessage(e.message||'Não foi possível guardar a fotografia.')}finally{setPhotoBusy(false)}
+  }
+
   return <div style={{display:'grid',gap:18,marginTop:28}}>
     <div style={{display:'flex',alignItems:'center',gap:12}}>
       <button onClick={onBack} style={ghostButton}>← CLIENTES</button>
@@ -364,6 +376,11 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
           <button disabled={busy} style={goldButton}>GUARDAR PERFIL</button>
         </form>
       </div>
+      <div style={card} className="before-photo-card"><div style={cardTitle}>FOTOGRAFIA INICIAL · ANTES</div>
+        <div className="before-photo-frame">{client.before_photo_url?<img src={client.before_photo_url} alt={`Fotografia inicial de ${client.full_name}`} />:<div className="before-photo-empty"><b>SEM FOTOGRAFIA</b><span>Adiciona uma imagem frontal do início da transformação.</span></div>}</div>
+        <label className="before-photo-upload">{photoBusy?'A ENVIAR…':client.before_photo_url?'ALTERAR FOTOGRAFIA':'ADICIONAR FOTOGRAFIA'}<input disabled={photoBusy} type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>saveBeforePhoto(e.target.files?.[0])}/></label>
+        <p style={{...muted,fontSize:11,marginBottom:0}}>JPG, PNG ou WebP · máximo 5 MB.</p>
+      </div>
       <div style={card}><div style={cardTitle}>PESO / PROGRESSO</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
           <div><div style={labelStyle}>INICIAL</div><div style={bigNumber}>{client.initial_weight??'—'}<small> kg</small></div></div>
@@ -382,7 +399,7 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
 function WeightManager({client,session,weights,onRefresh}:{client:any,session:Session,weights:any[],onRefresh:()=>void}) {
   const [weight,setWeight]=useState(''),[date,setDate]=useState(new Date().toISOString().slice(0,10)),[saving,setSaving]=useState(false)
   const add=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);try{await addWeightProgress(session.access_token,{client_id:client.id,weight:Number(weight),recorded_at:date});await updateClientProfile(session.access_token,client.id,{current_weight:Number(weight)});setWeight('');onRefresh()}finally{setSaving(false)}}
-  return <div style={{marginTop:24}}><div style={cardTitle}>REGISTAR PESO</div><form onSubmit={add} style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:8}}><input value={weight} onChange={e=>setWeight(e.target.value)} type="number" step=".1" placeholder="Peso kg" required style={inputStyle}/><input value={date} onChange={e=>setDate(e.target.value)} type="date" style={inputStyle}/><button disabled={saving} style={goldButton}>ADICIONAR</button></form><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}>{weights.map(w=><div key={w.id} style={weightPill}>{w.weight} kg <span>{w.recorded_at}</span><button onClick={async()=>{await deleteWeightProgress(session.access_token,w.id);onRefresh()}} style={{...ghostButton,padding:'2px 5px',marginLeft:5}}>×</button></div>)}</div></div>
+  return <div style={{marginTop:24}}><div style={cardTitle}>REGISTAR PESO</div><form onSubmit={add} className="weight-entry-form"><input value={weight} onChange={e=>setWeight(e.target.value)} type="number" step=".1" placeholder="Peso kg" required style={inputStyle}/><input value={date} onChange={e=>setDate(e.target.value)} type="date" style={inputStyle}/><button disabled={saving} style={goldButton}>ADICIONAR</button></form><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}>{weights.map(w=><div key={w.id} style={weightPill}>{w.weight} kg <span>{w.recorded_at}</span><button onClick={async()=>{await deleteWeightProgress(session.access_token,w.id);onRefresh()}} style={{...ghostButton,padding:'2px 5px',marginLeft:5}}>×</button></div>)}</div></div>
 }
 
 function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:Session,workouts:any[],onRefresh:()=>void}) {
@@ -746,6 +763,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
     {tab==='profile'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18}}>
       <div style={card}><div style={cardTitle}>OBJETIVO</div><div style={bigNumber}>{client.current_weight ?? client.initial_weight ?? '—'} <small>kg</small></div><p style={muted}>Objetivo: {client.goal_weight ?? '—'} kg</p></div>
       <div style={card}><div style={cardTitle}>DADOS</div><p style={text}><b>Altura:</b> {client.height ?? '—'} cm</p><p style={text}><b>Objetivo:</b> {client.goal ?? '—'}</p><p style={text}><b>Início:</b> {client.start_date ?? '—'}</p></div>
+      <div style={card} className="before-photo-card"><div style={cardTitle}>O MEU PONTO DE PARTIDA</div><div className="before-photo-frame client-photo-frame">{client.before_photo_url?<img src={client.before_photo_url} alt="A minha fotografia inicial"/>:<div className="before-photo-empty"><b>FOTOGRAFIA INICIAL</b><span>O teu treinador ainda não adicionou a fotografia do início.</span></div>}</div></div>
       <div style={{gridColumn:'1/-1'}}><WeightProgressChart client={client} weights={weights}/></div>
     </div>}
 
