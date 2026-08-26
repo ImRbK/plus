@@ -99,6 +99,22 @@ function nextCheckinDate(checkins: any[]) {
   next.setHours(0, 0, 0, 0)
   return next
 }
+
+function trainingWeekStreak(sessions: any[]) {
+  const weeks=[...new Set(sessions.map(item=>{
+    const date=new Date(item.completed_at)
+    date.setHours(0,0,0,0)
+    date.setDate(date.getDate()-((date.getDay()+6)%7))
+    return date.getTime()
+  }))].sort((a,b)=>b-a)
+  if(!weeks.length)return 0
+  let streak=1
+  for(let index=1;index<weeks.length;index++){
+    if(weeks[index-1]-weeks[index]===7*DAY_MS)streak++
+    else break
+  }
+  return streak
+}
 const SECTIONS = [
   { label: 'Introdução', range: [0, 3] }, { label: 'Ganhar Massa', range: [4, 16] },
   { label: 'Treino', range: [17, 24] }, { label: 'FAQ', range: [25, 27] },
@@ -246,7 +262,7 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
 }
 
 function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Session,onOpen:(client:any,tab:'overview'|'workout'|'nutrition'|'checkin')=>void}){
-  const [data,setData]=useState<Record<string,{workouts:any[],nutrition:any[],checkins:any[],weights:any[]}>>({})
+  const [data,setData]=useState<Record<string,{workouts:any[],nutrition:any[],checkins:any[],weights:any[],sessions:any[]}>>({})
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
 
@@ -255,13 +271,14 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
     setLoading(true);setError('')
     try{
       const rows=await Promise.all(clients.map(async(client)=>{
-        const [workouts,nutrition,checkins,weights]=await Promise.all([
+        const [workouts,nutrition,checkins,weights,sessions]=await Promise.all([
           getClientWorkouts(session.access_token,client.id),
           getNutritionPlans(session.access_token,client.id),
           getCheckIns(session.access_token,client.id),
           getWeightProgress(session.access_token,client.id),
+          getWorkoutSessions(session.access_token,client.id),
         ])
-        return [client.id,{workouts,nutrition,checkins,weights}] as const
+        return [client.id,{workouts,nutrition,checkins,weights,sessions}] as const
       }))
       setData(Object.fromEntries(rows))
     }catch(e:any){setError(e.message||'Não foi possível carregar o resumo das ferramentas.')}finally{setLoading(false)}
@@ -277,6 +294,11 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
   const withoutNutrition=clients.filter(c=>(data[c.id]?.nutrition.length||0)===0)
   const withoutCheckin=clients.filter(c=>(data[c.id]?.checkins.length||0)===0)
   const withoutProgress=clients.filter(c=>(data[c.id]?.weights.length||0)<2)
+  const inactiveClients=clients.filter(c=>{
+    const latest=data[c.id]?.sessions[0]?.completed_at
+    return !latest||Date.now()-new Date(latest).getTime()>7*DAY_MS
+  })
+  const totalSessions=clients.reduce((sum,c)=>sum+(data[c.id]?.sessions.length||0),0)
   const latestCheckinClient=clients
     .map(c=>({client:c,date:data[c.id]?.checkins[0]?.created_at||''}))
     .sort((a,b)=>b.date.localeCompare(a.date))[0]?.client
@@ -286,6 +308,7 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
     {key:'nutrition',label:'NUTRIÇÃO',value:totalNutrition,unit:'planos alimentares',missing:withoutNutrition,description:withoutNutrition.length?`${withoutNutrition.length} cliente${withoutNutrition.length===1?'':'s'} ainda sem plano`:'Todos os clientes têm plano',tab:'nutrition' as const,target:withoutNutrition[0]||clients[0]},
     {key:'checkin',label:'CHECK-INS',value:totalCheckins,unit:'registos recebidos',missing:withoutCheckin,description:withoutCheckin.length?`${withoutCheckin.length} cliente${withoutCheckin.length===1?'':'s'} sem check-in`:'Todos já enviaram check-in',tab:'checkin' as const,target:withoutCheckin[0]||latestCheckinClient||clients[0]},
     {key:'progress',label:'PROGRESSO',value:totalWeights,unit:'pesagens guardadas',missing:withoutProgress,description:withoutProgress.length?`${withoutProgress.length} cliente${withoutProgress.length===1?'':'s'} com poucos registos`:'Progresso atualizado',tab:'overview' as const,target:withoutProgress[0]||clients[0]},
+    {key:'activity',label:'ATIVIDADE',value:totalSessions,unit:'treinos concluídos',missing:inactiveClients,description:inactiveClients.length?`${inactiveClients.length} cliente${inactiveClients.length===1?'':'s'} sem treinar há 7 dias`:'Todos treinaram nos últimos 7 dias',tab:'workout' as const,target:inactiveClients[0]||clients[0]},
   ]
 
   return <div style={card}>
@@ -302,11 +325,12 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
         <div style={{...controlStatus,color:tool.missing.length?'#e4bd54':'#81c990'}}>{tool.description}</div>
         <div style={controlAction}>{tool.target?`ABRIR ${tool.target.full_name?.split(' ')[0]?.toUpperCase()||'CLIENTE'} →`:'SEM CLIENTES'}</div>
       </button>)}</div>
-      {(withoutWorkout.length>0||withoutNutrition.length>0)&&<div style={{marginTop:18,paddingTop:17,borderTop:'1px solid rgba(255,255,255,.07)'}}>
+      {(withoutWorkout.length>0||withoutNutrition.length>0||inactiveClients.length>0)&&<div style={{marginTop:18,paddingTop:17,borderTop:'1px solid rgba(255,255,255,.07)'}}>
         <div style={cardTitle}>AÇÕES RECOMENDADAS</div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {withoutWorkout.slice(0,3).map(c=><button key={`w-${c.id}`} onClick={()=>onOpen(c,'workout')} style={actionChip}>＋ Criar treino para {c.full_name}</button>)}
           {withoutNutrition.slice(0,3).map(c=><button key={`n-${c.id}`} onClick={()=>onOpen(c,'nutrition')} style={actionChip}>＋ Criar nutrição para {c.full_name}</button>)}
+          {inactiveClients.slice(0,3).map(c=><button key={`a-${c.id}`} onClick={()=>onOpen(c,'workout')} style={actionChip}>⚠ {c.full_name} sem treino recente</button>)}
         </div>
       </div>}
     </>}
@@ -738,6 +762,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   const [exercisesByWorkout,setExercisesByWorkout]=useState<Record<string,any[]>>({})
   const [loadingWorkouts,setLoadingWorkouts]=useState(false)
   const [workoutError,setWorkoutError]=useState('')
+  const [workoutSessions,setWorkoutSessions]=useState<any[]>([])
   const [nutritionPlans,setNutritionPlans]=useState<any[]>([])
   const [mealsByPlan,setMealsByPlan]=useState<Record<string,any[]>>({})
   const [loadingNutrition,setLoadingNutrition]=useState(false)
@@ -759,6 +784,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       plans.forEach((plan:any,index:number)=>{grouped[String(plan.id)]=exerciseLists[index]||[]})
       setWorkouts(plans)
       setExercisesByWorkout(grouped)
+      setWorkoutSessions(await getWorkoutSessions(session.access_token,client.id))
     } catch(e:any) {
       setWorkoutError(e.message||'Não foi possível carregar os teus treinos.')
     } finally {
@@ -807,6 +833,9 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   const progressPercent=hasProgressData?Math.max(0,Math.min(100,Math.round(((currentWeight-initialWeight)/(goalWeight-initialWeight))*100))):0
   const nextCheckin=nextCheckinDate(clientCheckins)
   const checkinDue=nextCheckin.getTime()<=new Date().setHours(0,0,0,0)
+  const weekStart=Date.now()-7*DAY_MS
+  const sessionsThisWeek=workoutSessions.filter(item=>new Date(item.completed_at).getTime()>=weekStart).length
+  const activeWeeks=trainingWeekStreak(workoutSessions)
 
   return <div style={{display:'grid',gap:18,marginTop:28}}>
     <div style={clientDashboardGrid}>
@@ -814,6 +843,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       <div style={dashboardMetricCard}><span>OBJETIVO</span><b>{client.goal_weight??'—'} <small>kg</small></b><small>{client.goal||'Objetivo definido pelo treinador'}</small></div>
       <div style={dashboardMetricCard}><span>PROGRESSO</span><b>{hasProgressData?`${progressPercent}%`:'—'}</b><div style={progressTrack}><div style={{...progressFill,width:`${progressPercent}%`}}/></div></div>
       <button onClick={()=>setTab('checkin')} style={{...dashboardMetricCard,...nextCheckinCard,borderColor:checkinDue?'rgba(212,175,55,.45)':'rgba(255,255,255,.08)'}}><span>PRÓXIMO CHECK-IN</span><b>{checkinDue?'DISPONÍVEL':formatDate(nextCheckin.toISOString())}</b><small>{checkinDue?'Preenche o acompanhamento desta semana':'Abre 7 dias após o último envio'}</small></button>
+      <button onClick={()=>setTab('workout')} style={{...dashboardMetricCard,...nextCheckinCard}}><span>ATIVIDADE</span><b>{sessionsThisWeek} <small>treinos</small></b><small>Sequência: {activeWeeks} semana{activeWeeks===1?'':'s'} ativa{activeWeeks===1?'':'s'}</small></button>
     </div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
       <button onClick={()=>setTab('profile')} style={{...ghostButton,color:tab==='profile'?GOLD:undefined,borderColor:tab==='profile'?'rgba(212,175,55,.35)':undefined}}>PERFIL</button>
@@ -826,6 +856,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       <div style={card}><div style={cardTitle}>OBJETIVO</div><div style={bigNumber}>{client.current_weight ?? client.initial_weight ?? '—'} <small>kg</small></div><p style={muted}>Objetivo: {client.goal_weight ?? '—'} kg</p></div>
       <div style={card}><div style={cardTitle}>DADOS</div><p style={text}><b>Altura:</b> {client.height ?? '—'} cm</p><p style={text}><b>Objetivo:</b> {client.goal ?? '—'}</p><p style={text}><b>Início:</b> {client.start_date ?? '—'}</p></div>
       <div style={card} className="before-photo-card"><div style={cardTitle}>O MEU PONTO DE PARTIDA</div><div className="before-photo-frame client-photo-frame">{client.before_photo_url?<img src={client.before_photo_url} alt="A minha fotografia inicial"/>:<div className="before-photo-empty"><b>FOTOGRAFIA INICIAL</b><span>O teu treinador ainda não adicionou a fotografia do início.</span></div>}</div></div>
+      <div style={{gridColumn:'1/-1'}}><ExercisePerformance sessions={workoutSessions} exercisesByWorkout={exercisesByWorkout}/></div>
       <div style={{gridColumn:'1/-1'}}><WeightProgressChart client={client} weights={weights}/></div>
     </div>}
 
@@ -839,7 +870,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       {!loadingWorkouts&&!workoutError&&workouts.length===0&&<div style={card}><div style={cardTitle}>AINDA SEM TREINO</div><p style={muted}>Ainda não tens nenhum plano de treino atribuído. Quando o teu treinador o criar, aparecerá aqui automaticamente.</p></div>}
       {!loadingWorkouts&&!workoutError&&workouts.map((workout:any,index:number)=>{
         const exercises=exercisesByWorkout[String(workout.id)]||[]
-        return <ClientWorkoutCard key={workout.id} workout={workout} exercises={exercises} index={index} client={client} session={session}/>
+        return <ClientWorkoutCard key={workout.id} workout={workout} exercises={exercises} index={index} client={client} session={session} onCompleted={loadWorkouts}/>
       })}
     </div>}
 
@@ -893,7 +924,19 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   </div>
 }
 
-function ClientWorkoutCard({workout,exercises,index,client,session}:{workout:any,exercises:any[],index:number,client:any,session:Session}){
+function ExercisePerformance({sessions,exercisesByWorkout}:{sessions:any[],exercisesByWorkout:Record<string,any[]>}){
+  const exercises=Object.values(exercisesByWorkout).flat()
+  const rows=exercises.map(exercise=>{
+    const logs=sessions.flatMap(item=>(item.exercise_logs||[]).map((log:any)=>({...log,completed_at:item.completed_at}))).filter((log:any)=>log.exercise_id===exercise.id).sort((a:any,b:any)=>String(b.completed_at).localeCompare(String(a.completed_at)))
+    const weighted=logs.filter((log:any)=>log.weight!=null&&Number.isFinite(Number(log.weight)))
+    const best=weighted.length?Math.max(...weighted.map((log:any)=>Number(log.weight))):null
+    const delta=weighted.length>1?Number((Number(weighted[0].weight)-Number(weighted[1].weight)).toFixed(1)):null
+    return {exercise,latest:logs[0],best,delta}
+  }).filter(item=>item.latest)
+  return <div style={progressCard}><div style={cardTitle}>DESEMPENHO NOS EXERCÍCIOS</div><p style={{...muted,margin:'-8px 0 16px'}}>Compara a última sessão e acompanha os teus recordes pessoais.</p>{rows.length===0?<p style={muted}>Conclui um treino com carga e repetições para começares a ver a evolução.</p>:<div style={performanceGrid}>{rows.map(item=><div key={item.exercise.id} style={performanceCard}><strong>{item.exercise.name||'Exercício'}</strong><div style={performanceValues}><span>ÚLTIMO <b>{item.latest.weight??'—'} kg × {item.latest.reps}</b></span><span>RECORDE <b>{item.best??'—'} kg</b></span><span>EVOLUÇÃO <b style={{color:item.delta==null?WHITE:item.delta>=0?'#81c990':'#ff8585'}}>{item.delta==null?'—':`${item.delta>0?'+':''}${item.delta} kg`}</b></span></div></div>)}</div>}</div>
+}
+
+function ClientWorkoutCard({workout,exercises,index,client,session,onCompleted}:{workout:any,exercises:any[],index:number,client:any,session:Session,onCompleted:()=>Promise<void>}){
   const [openExercise,setOpenExercise]=useState<number|null>(exercises[0]?.id??null)
   const [entries,setEntries]=useState<Record<string,{weight:string,reps:string,rir:string}>>({})
   const [history,setHistory]=useState<any[]>([])
@@ -911,7 +954,7 @@ function ClientWorkoutCard({workout,exercises,index,client,session}:{workout:any
       const workoutSession=await createWorkoutSession(session.access_token,{client_id:client.id,workout_id:workout.id,completed_at:new Date().toISOString()})
       if(!workoutSession?.id)throw new Error('Não foi possível criar a sessão de treino.')
       await createExerciseLogs(session.access_token,completed.map(exercise=>({session_id:workoutSession.id,exercise_id:exercise.id,weight:entries[exercise.id].weight===''?null:Number(entries[exercise.id].weight),reps:Number(entries[exercise.id].reps),rir:entries[exercise.id].rir===''?null:Number(entries[exercise.id].rir)})))
-      setEntries({});setMessage('Treino concluído e progressão guardada.');await loadHistory()
+      setEntries({});setMessage('Treino concluído e progressão guardada.');await Promise.all([loadHistory(),onCompleted()])
     }catch(e:any){setMessage(e.message||'Não foi possível guardar o treino.')}finally{setSaving(false)}
   }
   return <div style={clientWorkoutPlan}>
@@ -1203,6 +1246,9 @@ const checkinLocked:any={border:'1px solid rgba(212,175,55,.2)',background:'rgba
 const exerciseLogGrid:any={display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:8,marginTop:14}
 const sessionHistoryRow:any={display:'flex',justifyContent:'space-between',gap:10,border:'1px solid rgba(255,255,255,.07)',background:'rgba(0,0,0,.18)',padding:'10px 12px',fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.6)'}
 const adminSessionRow:any={display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.16)',padding:'12px 14px',fontFamily:"'Inter',sans-serif",fontSize:12,color:'rgba(255,255,255,.65)'}
+const performanceGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:9}
+const performanceCard:any={border:'1px solid rgba(255,255,255,.08)',background:'rgba(0,0,0,.18)',padding:14,fontFamily:"'League Spartan',sans-serif",display:'grid',gap:12}
+const performanceValues:any={display:'grid',gridTemplateColumns:'repeat(3,minmax(0,1fr))',gap:6,fontSize:8,color:'rgba(255,255,255,.4)'}
 const controlGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}
 const controlCard:any={background:'linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.16))',border:'1px solid rgba(255,255,255,.08)',padding:18,textAlign:'left',color:WHITE,cursor:'pointer',display:'grid',gap:5,fontFamily:"'Inter',sans-serif"}
 const controlLabel:any={fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.15em',color:GOLD}
