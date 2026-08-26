@@ -17,7 +17,7 @@ import {
   P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
   P44_Plateaus, P45_FatLossPlan,
 } from './ebook/lossPages'
-import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getCoachNotes, createCoachNote, deleteCoachNote, getClientTasks, createClientTask, updateClientTask, deleteClientTask, getMonthlyAssessments, createMonthlyAssessment, updateMonthlyAssessment, deleteMonthlyAssessment, uploadAssessmentPhoto, getSupplements, createSupplement, updateSupplement, deleteSupplement, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getCoachNotes, createCoachNote, deleteCoachNote, getClientTasks, createClientTask, updateClientTask, deleteClientTask, getMonthlyAssessments, createMonthlyAssessment, updateMonthlyAssessment, deleteMonthlyAssessment, uploadAssessmentPhoto, getSupplements, createSupplement, updateSupplement, deleteSupplement, getClientIntake, saveClientIntake, reviewClientIntake, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -182,7 +182,7 @@ function Dashboard({ session, admin, onLogout }: { session: Session, admin: bool
 function AdminView({clients, session, onClientsChange}:{clients:any[], session:Session, onClientsChange:(clients:any[])=>void}) {
   const [open, setOpen] = useState(false)
   const [selectedClient, setSelectedClient] = useState<any>(null)
-  const [selectedTab, setSelectedTab] = useState<'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements'>('overview')
+  const [selectedTab, setSelectedTab] = useState<'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements'|'intake'>('overview')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -261,8 +261,8 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
   </div>
 }
 
-function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Session,onOpen:(client:any,tab:'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements')=>void}){
-  const [data,setData]=useState<Record<string,{workouts:any[],nutrition:any[],checkins:any[],weights:any[],sessions:any[],tasks:any[]}>>({})
+function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Session,onOpen:(client:any,tab:'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements'|'intake')=>void}){
+  const [data,setData]=useState<Record<string,{workouts:any[],nutrition:any[],checkins:any[],weights:any[],sessions:any[],tasks:any[],intake:any}>>({})
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
 
@@ -271,15 +271,16 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
     setLoading(true);setError('')
     try{
       const rows=await Promise.all(clients.map(async(client)=>{
-        const [workouts,nutrition,checkins,weights,sessions,tasks]=await Promise.all([
+        const [workouts,nutrition,checkins,weights,sessions,tasks,intake]=await Promise.all([
           getClientWorkouts(session.access_token,client.id),
           getNutritionPlans(session.access_token,client.id),
           getCheckIns(session.access_token,client.id),
           getWeightProgress(session.access_token,client.id),
           getWorkoutSessions(session.access_token,client.id),
           getClientTasks(session.access_token,client.id),
+          getClientIntake(session.access_token,client.id),
         ])
-        return [client.id,{workouts,nutrition,checkins,weights,sessions,tasks}] as const
+        return [client.id,{workouts,nutrition,checkins,weights,sessions,tasks,intake}] as const
       }))
       setData(Object.fromEntries(rows))
     }catch(e:any){setError(e.message||'Não foi possível carregar o resumo das ferramentas.')}finally{setLoading(false)}
@@ -302,6 +303,7 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
   const totalSessions=clients.reduce((sum,c)=>sum+(data[c.id]?.sessions.length||0),0)
   const openTasks=clients.flatMap(c=>(data[c.id]?.tasks||[]).filter(task=>!task.is_completed).map(task=>({client:c,task})))
   const pendingCheckins=clients.flatMap(c=>(data[c.id]?.checkins||[]).filter(item=>!item.reviewed_at).map(item=>({client:c,item})))
+  const intakeAlerts=clients.filter(c=>data[c.id]?.intake?.submitted_at&&!data[c.id]?.intake?.reviewed_at)
   const latestCheckinClient=clients
     .map(c=>({client:c,date:data[c.id]?.checkins[0]?.created_at||''}))
     .sort((a,b)=>b.date.localeCompare(a.date))[0]?.client
@@ -340,15 +342,16 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
         {pendingCheckins.map(({client,item})=><button key={`ci-${item.id}`} onClick={()=>onOpen(client,'checkin')} style={inboxRow}><span><b>NOVO CHECK-IN</b> · {client.full_name}</span><small>{formatDate(item.created_at)}</small></button>)}
         {openTasks.filter(({task})=>task.due_date&&task.due_date<=new Date().toISOString().slice(0,10)).map(({client,task})=><button key={`t-${task.id}`} onClick={()=>onOpen(client,'overview')} style={inboxRow}><span><b>TAREFA PENDENTE</b> · {client.full_name} · {task.title}</span><small>{task.due_date}</small></button>)}
         {inactiveClients.map(client=><button key={`inactive-${client.id}`} onClick={()=>onOpen(client,'workout')} style={inboxRow}><span><b>SEM TREINO RECENTE</b> · {client.full_name}</span><small>ABRIR →</small></button>)}
-        {pendingCheckins.length===0&&openTasks.filter(({task})=>task.due_date&&task.due_date<=new Date().toISOString().slice(0,10)).length===0&&inactiveClients.length===0&&<div style={emptyToolState}>Não tens assuntos urgentes. Tudo em ordem.</div>}
+        {intakeAlerts.map(client=><button key={`intake-${client.id}`} onClick={()=>onOpen(client,'intake')} style={inboxRow}><span><b>FICHA INICIAL RECEBIDA</b> · {client.full_name}</span><small>REVER →</small></button>)}
+        {pendingCheckins.length===0&&openTasks.filter(({task})=>task.due_date&&task.due_date<=new Date().toISOString().slice(0,10)).length===0&&inactiveClients.length===0&&intakeAlerts.length===0&&<div style={emptyToolState}>Não tens assuntos urgentes. Tudo em ordem.</div>}
       </div></div>
     </>}
   </div>
 }
 
 
-function ClientManager({client, session, initialTab='overview', onBack, onClientUpdated}:{client:any,session:Session,initialTab?:'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements',onBack:()=>void,onClientUpdated:(c:any)=>void}) {
-  const [tab,setTab]=useState<'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements'>(initialTab)
+function ClientManager({client, session, initialTab='overview', onBack, onClientUpdated}:{client:any,session:Session,initialTab?:'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements'|'intake',onBack:()=>void,onClientUpdated:(c:any)=>void}) {
+  const [tab,setTab]=useState<'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements'|'intake'>(initialTab)
   const [weights,setWeights]=useState<any[]>([])
   const [workouts,setWorkouts]=useState<any[]>([])
   const [nutrition,setNutrition]=useState<any[]>([])
@@ -413,7 +416,7 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
       <div><div style={eyebrow}>CLIENTE</div><h2 style={{...title,fontSize:36,margin:4}}>{client.full_name}</h2></div>
     </div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-      {([['overview','PERFIL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-INS'],['assessment','REAVALIAÇÕES'],['supplements','SUPLEMENTAÇÃO']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{...ghostButton,color:tab===k?GOLD:undefined,borderColor:tab===k?'rgba(212,175,55,.48)':undefined,background:tab===k?'rgba(212,175,55,.11)':ghostButton.background,boxShadow:tab===k?'0 0 0 1px rgba(212,175,55,.08) inset':ghostButton.boxShadow}}>{l}</button>)}
+      {([['overview','PERFIL'],['intake','FICHA INICIAL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-INS'],['assessment','REAVALIAÇÕES'],['supplements','SUPLEMENTAÇÃO']] as const).map(([k,l])=><button key={k} onClick={()=>setTab(k)} style={{...ghostButton,color:tab===k?GOLD:undefined,borderColor:tab===k?'rgba(212,175,55,.48)':undefined,background:tab===k?'rgba(212,175,55,.11)':ghostButton.background,boxShadow:tab===k?'0 0 0 1px rgba(212,175,55,.08) inset':ghostButton.boxShadow}}>{l}</button>)}
     </div>
     {message && <div style={messageStyle}>{message}</div>}
     {busy && <div style={muted}>A carregar…</div>}
@@ -448,6 +451,7 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
     {tab==='checkin' && <CheckinManager client={client} session={session} checkins={checkins} onRefresh={load}/>}
     {tab==='assessment' && <AdminAssessments client={client} session={session}/>}
     {tab==='supplements' && <SupplementManager client={client} session={session}/>}
+    {tab==='intake' && <AdminIntake client={client} session={session}/>}
   </div>
 }
 
@@ -471,6 +475,14 @@ function AdminAssessments({client,session}:{client:any,session:Session}){
   const load=useCallback(async()=>{try{const rows=await getMonthlyAssessments(session.access_token,client.id);setItems(rows);setFeedback(Object.fromEntries(rows.map((x:any)=>[x.id,x.coach_feedback||''])))}catch(e:any){setMessage(e.message)}},[session.access_token,client.id])
   useEffect(()=>{load()},[load])
   return <div style={{display:'grid',gap:14}}><div style={trainingAdminHero}><div><div style={eyebrow}>REAVALIAÇÃO MENSAL</div><h3 style={{...title,fontSize:30}}>Evolução de {client.full_name?.split(' ')[0]}</h3></div><div style={reviewCount}><b>{items.length}</b><span>REGISTOS</span></div></div>{message&&<div style={errorStyle}>{message}</div>}{items.length===0?<div style={emptyAdminState}>O cliente ainda não enviou uma reavaliação.</div>:items.map(item=><div key={item.id} style={card}><div style={{display:'flex',justifyContent:'space-between',gap:12}}><div><div style={cardTitle}>{formatDate(item.assessment_date)}</div><b>{item.weight??'—'} kg · satisfação {item.satisfaction??'—'}/10</b></div><button onClick={async()=>{await deleteMonthlyAssessment(session.access_token,item.id);load()}} style={dangerButton}>ELIMINAR</button></div><div style={measurementGrid}>{[['CINTURA',item.waist],['PEITO',item.chest],['BRAÇO',item.arm],['PERNA',item.thigh],['ANCA',item.hips]].map(([label,value])=><div style={checkinMetric} key={label}><span>{label}</span><b>{value??'—'} cm</b></div>)}</div><AssessmentPhotos item={item}/>{item.client_notes&&<div style={clientNote}><b>OBSERVAÇÕES</b><p>{item.client_notes}</p></div>}<textarea value={feedback[item.id]||''} onChange={e=>setFeedback({...feedback,[item.id]:e.target.value})} placeholder="Comentário e objetivo para o próximo mês…" style={{...inputStyle,width:'100%',minHeight:85,marginTop:12}}/><button onClick={async()=>{await updateMonthlyAssessment(session.access_token,item.id,{coach_feedback:feedback[item.id]||null,reviewed_at:new Date().toISOString()});load()}} style={{...goldButton,width:'100%',marginTop:8}}>GUARDAR FEEDBACK</button></div>)}</div>
+}
+
+function AdminIntake({client,session}:{client:any,session:Session}){
+  const [item,setItem]=useState<any>(null),[message,setMessage]=useState('')
+  const load=useCallback(async()=>setItem(await getClientIntake(session.access_token,client.id)),[session.access_token,client.id]);useEffect(()=>{load().catch(e=>setMessage(e.message))},[load])
+  if(!item)return <div style={emptyAdminState}>A ficha inicial ainda não foi preenchida pelo cliente.</div>
+  const sections=[['DADOS E OBJETIVO',[['Nascimento',item.birth_date],['Telefone',item.phone],['Profissão',item.profession],['Emergência',item.emergency_contact],['Objetivo detalhado',item.goal_detail],['Prazo',item.target_date]]],['TREINO',[['Experiência',item.training_experience],['Dias/semana',item.training_days],['Minutos/sessão',item.session_minutes],['Local',item.training_location],['Equipamento',item.equipment],['Preferências',item.exercise_preferences],['Limitações/dor',item.limitations]]],['ALIMENTAÇÃO',[['Refeições/dia',item.meals_per_day],['Horários',item.meal_schedule],['Alimentos preferidos',item.preferred_foods],['Não gosta',item.disliked_foods],['Alergias/intolerâncias',item.allergies],['Suplementos atuais',item.current_supplements],['Água',item.water_liters?`${item.water_liters} L`:'—'],['Álcool',item.alcohol]]],['ROTINA E SAÚDE',[['Sono',item.sleep_hours?`${item.sleep_hours} h`:'—'],['Qualidade do sono',item.sleep_quality?`${item.sleep_quality}/10`:'—'],['Stress',item.stress_level?`${item.stress_level}/10`:'—'],['Atividade diária',item.daily_activity],['Condições médicas',item.medical_conditions],['Medicação',item.medication],['Cirurgias',item.surgeries],['Restrições médicas',item.medical_restrictions]]]] as const
+  return <div style={{display:'grid',gap:14}}><div style={trainingAdminHero}><div><div style={eyebrow}>FICHA INICIAL</div><h3 style={{...title,fontSize:30}}>{client.full_name}</h3><p style={{...muted,margin:0}}>Enviada em {formatDate(item.submitted_at)}</p></div><span style={{...reviewBadge,color:item.reviewed_at?'#81c990':GOLD}}>{item.reviewed_at?'REVISTA':'POR REVER'}</span></div>{sections.map(([titleText,fields])=><div key={titleText} style={card}><div style={cardTitle}>{titleText}</div><div style={intakeGrid}>{fields.map(([label,value])=><div key={label} style={intakeField}><span>{label}</span><b>{value??'—'}</b></div>)}</div></div>)}{!item.truth_confirmed&&<div style={errorStyle}>O cliente não confirmou a declaração de veracidade.</div>}<button onClick={async()=>{await reviewClientIntake(session.access_token,client.id);setMessage('Ficha marcada como revista.');load()}} disabled={Boolean(item.reviewed_at)} style={goldButton}>{item.reviewed_at?'FICHA REVISTA':'MARCAR COMO REVISTA'}</button>{message&&<div style={successStyle}>{message}</div>}</div>
 }
 
 function SupplementManager({client,session}:{client:any,session:Session}){
@@ -800,7 +812,7 @@ function WeightProgressChart({client,weights}:{client:any,weights:any[]}){
 }
 
 function ClientView({client,weights,session,onProgressUpdated}:{client:any,weights:any[],session:Session,onProgressUpdated:()=>Promise<void>}) {
-  const [tab,setTab]=useState<'profile'|'workout'|'nutrition'|'checkin'|'tasks'|'assessment'|'supplements'>('profile')
+  const [tab,setTab]=useState<'profile'|'workout'|'nutrition'|'checkin'|'tasks'|'assessment'|'supplements'|'intake'>('profile')
   const [workouts,setWorkouts]=useState<any[]>([])
   const [exercisesByWorkout,setExercisesByWorkout]=useState<Record<string,any[]>>({})
   const [loadingWorkouts,setLoadingWorkouts]=useState(false)
@@ -815,6 +827,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   const [checkinError,setCheckinError]=useState('')
   const [clientTasks,setClientTasks]=useState<any[]>([])
   const [assessments,setAssessments]=useState<any[]>([]),[supplements,setSupplements]=useState<any[]>([])
+  const [clientIntake,setClientIntake]=useState<any>(null)
 
   const loadWorkouts=useCallback(async()=>{
     if(!client?.id) return
@@ -867,12 +880,14 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   const loadClientTasks=useCallback(async()=>{if(client?.id)setClientTasks(await getClientTasks(session.access_token,client.id))},[client?.id,session.access_token])
   const loadAssessments=useCallback(async()=>{if(client?.id)setAssessments(await getMonthlyAssessments(session.access_token,client.id))},[client?.id,session.access_token])
   const loadSupplements=useCallback(async()=>{if(client?.id)setSupplements(await getSupplements(session.access_token,client.id))},[client?.id,session.access_token])
+  const loadIntake=useCallback(async()=>{if(client?.id)setClientIntake(await getClientIntake(session.access_token,client.id))},[client?.id,session.access_token])
 
   useEffect(()=>{loadWorkouts()},[loadWorkouts])
   useEffect(()=>{loadNutrition()},[loadNutrition])
   useEffect(()=>{loadClientCheckins()},[loadClientCheckins])
   useEffect(()=>{loadClientTasks()},[loadClientTasks])
   useEffect(()=>{loadAssessments()},[loadAssessments]);useEffect(()=>{loadSupplements()},[loadSupplements])
+  useEffect(()=>{loadIntake()},[loadIntake])
 
   if(!client) return <div style={{...card,marginTop:28}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>
 
@@ -896,9 +911,10 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
       <button onClick={()=>setTab('checkin')} style={{...dashboardMetricCard,...nextCheckinCard,borderColor:checkinDue?'rgba(212,175,55,.45)':'rgba(255,255,255,.08)'}}><span>PRÓXIMO CHECK-IN</span><b>{checkinDue?'DISPONÍVEL':formatDate(nextCheckin.toISOString())}</b><small>{checkinDue?'Preenche o acompanhamento desta semana':'Abre 7 dias após o último envio'}</small></button>
       <button onClick={()=>setTab('workout')} style={{...dashboardMetricCard,...nextCheckinCard}}><span>ATIVIDADE</span><b>{sessionsThisWeek} <small>treinos</small></b><small>Sequência: {activeWeeks} semana{activeWeeks===1?'':'s'} ativa{activeWeeks===1?'':'s'}</small></button>
       <button onClick={()=>setTab('tasks')} style={{...dashboardMetricCard,...nextCheckinCard,borderColor:pendingTasks.length?'rgba(212,175,55,.4)':'rgba(255,255,255,.08)'}}><span>TAREFAS</span><b>{pendingTasks.length}</b><small>{pendingTasks.length?'Tarefas por concluir':'Tudo concluído'}</small></button>
+      <button onClick={()=>setTab('intake')} style={{...dashboardMetricCard,...nextCheckinCard,borderColor:clientIntake?.submitted_at?'rgba(76,166,106,.25)':'rgba(212,175,55,.5)'}}><span>FICHA INICIAL</span><b>{clientIntake?.submitted_at?'CONCLUÍDA':'PREENCHER'}</b><small>{clientIntake?.submitted_at?'Dados enviados ao treinador':'Necessária para personalizar o plano'}</small></button>
     </div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-      {([['profile','PERFIL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-IN'],['tasks',`TAREFAS${pendingTasks.length?` (${pendingTasks.length})`:''}`],['assessment','REAVALIAÇÃO'],['supplements','SUPLEMENTAÇÃO']] as const).map(([key,label])=><button key={key} onClick={()=>setTab(key)} style={{...ghostButton,color:tab===key?GOLD:undefined,borderColor:tab===key?'rgba(212,175,55,.48)':undefined,background:tab===key?'rgba(212,175,55,.11)':ghostButton.background,boxShadow:tab===key?'0 0 0 1px rgba(212,175,55,.08) inset':ghostButton.boxShadow}}>{label}</button>)}
+      {([['profile','PERFIL'],['intake','FICHA INICIAL'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['checkin','CHECK-IN'],['tasks',`TAREFAS${pendingTasks.length?` (${pendingTasks.length})`:''}`],['assessment','REAVALIAÇÃO'],['supplements','SUPLEMENTAÇÃO']] as const).map(([key,label])=><button key={key} onClick={()=>setTab(key)} style={{...ghostButton,color:tab===key?GOLD:undefined,borderColor:tab===key?'rgba(212,175,55,.48)':undefined,background:tab===key?'rgba(212,175,55,.11)':ghostButton.background,boxShadow:tab===key?'0 0 0 1px rgba(212,175,55,.08) inset':ghostButton.boxShadow}}>{label}</button>)}
     </div>
 
     {tab==='profile'&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18}}>
@@ -973,12 +989,29 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
     {tab==='tasks'&&<ClientTasks tasks={clientTasks} session={session} onRefresh={loadClientTasks}/>} 
     {tab==='assessment'&&<ClientAssessment client={client} session={session} items={assessments} onRefresh={loadAssessments}/>} 
     {tab==='supplements'&&<ClientSupplements items={supplements}/>} 
+    {tab==='intake'&&<ClientIntakeForm client={client} session={session} value={clientIntake} onRefresh={loadIntake}/>} 
   </div>
 }
 
 function ClientTasks({tasks,session,onRefresh}:{tasks:any[],session:Session,onRefresh:()=>Promise<void>}){
   const toggle=async(item:any)=>{await updateClientTask(session.access_token,item.id,{is_completed:!item.is_completed,completed_at:item.is_completed?null:new Date().toISOString()});await onRefresh()}
   return <div style={card}><div style={eyebrow}>PLANO DE AÇÃO</div><h2 style={{...title,fontSize:30,marginBottom:7}}>As tuas tarefas</h2><p style={{...muted,marginTop:0}}>Pequenas ações definidas pelo teu treinador para manteres o progresso.</p>{tasks.length===0?<div style={emptyToolState}>Não tens tarefas atribuídas.</div>:<div style={{display:'grid',gap:9,marginTop:18}}>{tasks.map(item=><button key={item.id} onClick={()=>toggle(item)} style={{...clientTaskCard,borderColor:item.is_completed?'rgba(76,166,106,.25)':'rgba(212,175,55,.18)',opacity:item.is_completed?0.65:1}}><span style={{...taskCheck,background:item.is_completed?'#4ca66a':'transparent'}}>{item.is_completed?'✓':''}</span><span style={{flex:1}}><b>{item.title}</b>{item.details&&<small>{item.details}</small>}<small>{item.due_date?`Prazo: ${item.due_date}`:'Sem prazo definido'}</small></span><strong>{item.is_completed?'CONCLUÍDA':'MARCAR'}</strong></button>)}</div>}</div>
+}
+
+function ClientIntakeForm({client,session,value,onRefresh}:{client:any,session:Session,value:any,onRefresh:()=>Promise<void>}){
+  const blank:any={birth_date:'',phone:'',profession:'',emergency_contact:'',goal_detail:'',target_date:'',training_experience:'',training_days:'',session_minutes:'',training_location:'',equipment:'',exercise_preferences:'',limitations:'',meals_per_day:'',meal_schedule:'',preferred_foods:'',disliked_foods:'',allergies:'',current_supplements:'',water_liters:'',alcohol:'',sleep_hours:'',sleep_quality:'',stress_level:'',daily_activity:'',medical_conditions:'',medication:'',surgeries:'',medical_restrictions:'',truth_confirmed:false}
+  const [form,setForm]=useState<any>(blank),[saving,setSaving]=useState(false),[message,setMessage]=useState('')
+  useEffect(()=>{if(value)setForm({...blank,...value})},[value])
+  const set=(key:string,next:any)=>setForm((current:any)=>({...current,[key]:next}))
+  const textArea=(key:string,label:string,placeholder='')=><label style={labelStyle}>{label}<textarea value={form[key]||''} onChange={e=>set(key,e.target.value)} placeholder={placeholder} style={{...inputStyle,width:'100%',minHeight:68,marginTop:6}}/></label>
+  const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setMessage('');try{if(!form.truth_confirmed)throw new Error('Confirma a declaração antes de enviar.');const numeric=['training_days','session_minutes','meals_per_day','water_liters','sleep_hours','sleep_quality','stress_level'];const payload={...form,client_id:client.id,submitted_at:new Date().toISOString()};delete payload.id;delete payload.created_at;delete payload.updated_at;delete payload.reviewed_at;numeric.forEach(key=>payload[key]=payload[key]===''?null:Number(payload[key]));await saveClientIntake(session.access_token,payload);setMessage('Ficha inicial enviada ao treinador.');await onRefresh()}catch(e:any){setMessage(e.message)}finally{setSaving(false)}}
+  return <form onSubmit={submit} style={{display:'grid',gap:14}}><div style={trainingAdminHero}><div><div style={eyebrow}>ONBOARDING</div><h2 style={{...title,fontSize:30}}>A tua ficha inicial</h2><p style={{...muted,margin:0}}>Estas respostas permitem personalizar o treino e a alimentação.</p></div><span style={{...reviewBadge,color:value?.submitted_at?'#81c990':GOLD}}>{value?.submitted_at?'ENVIADA':'POR PREENCHER'}</span></div>
+    <div style={card}><div style={cardTitle}>DADOS E OBJETIVO</div><div style={formGrid}><input value={form.birth_date||''} onChange={e=>set('birth_date',e.target.value)} type="date" style={inputStyle}/><input value={form.phone||''} onChange={e=>set('phone',e.target.value)} placeholder="Telefone" style={inputStyle}/><input value={form.profession||''} onChange={e=>set('profession',e.target.value)} placeholder="Profissão" style={inputStyle}/><input value={form.emergency_contact||''} onChange={e=>set('emergency_contact',e.target.value)} placeholder="Contacto de emergência" style={inputStyle}/></div>{textArea('goal_detail','OBJETIVO DETALHADO','O que pretendes alcançar e porquê?')}<label style={labelStyle}>PRAZO PRETENDIDO<input value={form.target_date||''} onChange={e=>set('target_date',e.target.value)} type="date" style={{...inputStyle,width:'100%',marginTop:6}}/></label></div>
+    <div style={card}><div style={cardTitle}>TREINO</div><div style={formGrid}><select value={form.training_experience||''} onChange={e=>set('training_experience',e.target.value)} style={inputStyle}><option value="">Experiência</option><option>Iniciante</option><option>Intermédia</option><option>Avançada</option></select><input value={form.training_days||''} onChange={e=>set('training_days',e.target.value)} type="number" min="0" max="7" placeholder="Dias por semana" style={inputStyle}/><input value={form.session_minutes||''} onChange={e=>set('session_minutes',e.target.value)} type="number" min="10" placeholder="Minutos por sessão" style={inputStyle}/><input value={form.training_location||''} onChange={e=>set('training_location',e.target.value)} placeholder="Ginásio, casa…" style={inputStyle}/></div>{textArea('equipment','EQUIPAMENTO DISPONÍVEL')}{textArea('exercise_preferences','PREFERÊNCIAS DE EXERCÍCIOS')}{textArea('limitations','DORES, LESÕES OU LIMITAÇÕES')}</div>
+    <div style={card}><div style={cardTitle}>ALIMENTAÇÃO</div><div style={formGrid}><input value={form.meals_per_day||''} onChange={e=>set('meals_per_day',e.target.value)} type="number" min="1" placeholder="Refeições por dia" style={inputStyle}/><input value={form.water_liters||''} onChange={e=>set('water_liters',e.target.value)} type="number" min="0" step=".1" placeholder="Água por dia (L)" style={inputStyle}/></div>{textArea('meal_schedule','HORÁRIOS HABITUAIS')}{textArea('preferred_foods','ALIMENTOS PREFERIDOS')}{textArea('disliked_foods','ALIMENTOS QUE NÃO GOSTAS')}{textArea('allergies','ALERGIAS OU INTOLERÂNCIAS')}{textArea('current_supplements','SUPLEMENTOS ATUAIS')}{textArea('alcohol','CONSUMO DE ÁLCOOL')}</div>
+    <div style={card}><div style={cardTitle}>ROTINA, RECUPERAÇÃO E SAÚDE</div><div style={formGrid}><input value={form.sleep_hours||''} onChange={e=>set('sleep_hours',e.target.value)} type="number" min="0" max="24" step=".5" placeholder="Horas de sono" style={inputStyle}/><input value={form.sleep_quality||''} onChange={e=>set('sleep_quality',e.target.value)} type="number" min="1" max="10" placeholder="Qualidade do sono 1–10" style={inputStyle}/><input value={form.stress_level||''} onChange={e=>set('stress_level',e.target.value)} type="number" min="1" max="10" placeholder="Stress 1–10" style={inputStyle}/></div>{textArea('daily_activity','ATIVIDADE DIÁRIA / TIPO DE TRABALHO')}{textArea('medical_conditions','CONDIÇÕES MÉDICAS RELEVANTES')}{textArea('medication','MEDICAÇÃO')}{textArea('surgeries','CIRURGIAS ANTERIORES')}{textArea('medical_restrictions','RESTRIÇÕES OU RECOMENDAÇÕES MÉDICAS')}<div style={supplementNotice}>Esta ficha não substitui avaliação médica. Se existir dor, doença, medicação ou restrição, procura orientação de um profissional de saúde.</div><label style={{...text,display:'flex',gap:9,alignItems:'flex-start'}}><input checked={Boolean(form.truth_confirmed)} onChange={e=>set('truth_confirmed',e.target.checked)} type="checkbox"/>Confirmo que as informações fornecidas são verdadeiras e completas.</label></div>
+    <button disabled={saving} style={goldButton}>{saving?'A ENVIAR…':value?.submitted_at?'ATUALIZAR E REENVIAR FICHA':'ENVIAR FICHA INICIAL'}</button>{message&&<div style={message.includes('enviada')?successStyle:errorStyle}>{message}</div>}
+  </form>
 }
 
 function ClientAssessment({client,session,items,onRefresh}:{client:any,session:Session,items:any[],onRefresh:()=>Promise<void>}){
@@ -1331,6 +1364,8 @@ const photoUploadLabel:any={border:'1px dashed rgba(212,175,55,.3)',borderRadius
 const supplementNotice:any={borderLeft:`3px solid ${GOLD}`,background:'rgba(212,175,55,.06)',padding:'12px 14px',fontFamily:"'Inter',sans-serif",fontSize:11,lineHeight:1.55,color:'rgba(255,255,255,.65)',margin:'14px 0'}
 const supplementCard:any={display:'flex',alignItems:'flex-start',gap:13,border:'1px solid rgba(212,175,55,.17)',borderRadius:10,background:'linear-gradient(145deg,rgba(212,175,55,.07),rgba(0,0,0,.18))',padding:15}
 const supplementIcon:any={width:34,height:34,borderRadius:'50%',background:GOLD,color:'#090909',display:'grid',placeItems:'center',fontWeight:900,flex:'0 0 auto'}
+const intakeGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:8}
+const intakeField:any={border:'1px solid rgba(255,255,255,.08)',borderRadius:8,background:'rgba(0,0,0,.18)',padding:'11px 12px',display:'grid',gap:5,fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.45)'}
 const controlGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}
 const controlCard:any={background:'linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.16))',border:'1px solid rgba(255,255,255,.08)',padding:18,textAlign:'left',color:WHITE,cursor:'pointer',display:'grid',gap:5,fontFamily:"'Inter',sans-serif"}
 const controlLabel:any={fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.15em',color:GOLD}
