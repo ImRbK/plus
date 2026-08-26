@@ -17,7 +17,7 @@ import {
   P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
   P44_Plateaus, P45_FatLossPlan,
 } from './ebook/lossPages'
-import { getSession, setSession, signIn, signOut, refreshSession, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getCoachNotes, createCoachNote, deleteCoachNote, getClientTasks, createClientTask, updateClientTask, deleteClientTask, getMonthlyAssessments, createMonthlyAssessment, updateMonthlyAssessment, deleteMonthlyAssessment, uploadAssessmentPhoto, getSupplements, createSupplement, updateSupplement, deleteSupplement, getClientIntake, saveClientIntake, reviewClientIntake, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, refreshSession, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getCoachNotes, createCoachNote, deleteCoachNote, getClientTasks, createClientTask, updateClientTask, deleteClientTask, getMonthlyAssessments, createMonthlyAssessment, updateMonthlyAssessment, deleteMonthlyAssessment, uploadAssessmentPhoto, getSupplements, createSupplement, updateSupplement, deleteSupplement, getClientIntake, saveClientIntake, reviewClientIntake, getSupportRequests, createSupportRequest, updateSupportRequest, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -115,6 +115,8 @@ function trainingWeekStreak(sessions: any[]) {
   }
   return streak
 }
+
+function supportCategory(value:string){return ({nutrition:'Alimentação',exercise:'Exercício/desconforto',schedule:'Horário',adherence:'Cumprimento do plano',contact:'Falar com treinador',other:'Outro'} as Record<string,string>)[value]||'Pedido'}
 const SECTIONS = [
   { label: 'Introdução', range: [0, 3] }, { label: 'Ganhar Massa', range: [4, 16] },
   { label: 'Treino', range: [17, 24] }, { label: 'FAQ', range: [25, 27] },
@@ -262,7 +264,7 @@ function AdminView({clients, session, onClientsChange}:{clients:any[], session:S
 }
 
 function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Session,onOpen:(client:any,tab:'overview'|'workout'|'nutrition'|'checkin'|'assessment'|'supplements'|'intake')=>void}){
-  const [data,setData]=useState<Record<string,{workouts:any[],nutrition:any[],checkins:any[],weights:any[],sessions:any[],tasks:any[],intake:any}>>({})
+  const [data,setData]=useState<Record<string,{workouts:any[],nutrition:any[],checkins:any[],weights:any[],sessions:any[],tasks:any[],intake:any,requests:any[]}>>({})
   const [loading,setLoading]=useState(true)
   const [error,setError]=useState('')
 
@@ -271,7 +273,7 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
     setLoading(true);setError('')
     try{
       const rows=await Promise.all(clients.map(async(client)=>{
-        const [workouts,nutrition,checkins,weights,sessions,tasks,intake]=await Promise.all([
+        const [workouts,nutrition,checkins,weights,sessions,tasks,intake,requests]=await Promise.all([
           getClientWorkouts(session.access_token,client.id),
           getNutritionPlans(session.access_token,client.id),
           getCheckIns(session.access_token,client.id),
@@ -279,8 +281,9 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
           getWorkoutSessions(session.access_token,client.id),
           getClientTasks(session.access_token,client.id),
           getClientIntake(session.access_token,client.id),
+          getSupportRequests(session.access_token,client.id),
         ])
-        return [client.id,{workouts,nutrition,checkins,weights,sessions,tasks,intake}] as const
+        return [client.id,{workouts,nutrition,checkins,weights,sessions,tasks,intake,requests}] as const
       }))
       setData(Object.fromEntries(rows))
     }catch(e:any){setError(e.message||'Não foi possível carregar o resumo das ferramentas.')}finally{setLoading(false)}
@@ -304,6 +307,7 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
   const openTasks=clients.flatMap(c=>(data[c.id]?.tasks||[]).filter(task=>!task.is_completed).map(task=>({client:c,task})))
   const pendingCheckins=clients.flatMap(c=>(data[c.id]?.checkins||[]).filter(item=>!item.reviewed_at).map(item=>({client:c,item})))
   const intakeAlerts=clients.filter(c=>data[c.id]?.intake?.submitted_at&&!data[c.id]?.intake?.reviewed_at)
+  const helpAlerts=clients.flatMap(c=>(data[c.id]?.requests||[]).filter(item=>item.status==='open').map(item=>({client:c,item})))
   const latestCheckinClient=clients
     .map(c=>({client:c,date:data[c.id]?.checkins[0]?.created_at||''}))
     .sort((a,b)=>b.date.localeCompare(a.date))[0]?.client
@@ -343,7 +347,8 @@ function AdminControlCenter({clients,session,onOpen}:{clients:any[],session:Sess
         {openTasks.filter(({task})=>task.due_date&&task.due_date<=new Date().toISOString().slice(0,10)).map(({client,task})=><button key={`t-${task.id}`} onClick={()=>onOpen(client,'overview')} style={inboxRow}><span><b>TAREFA PENDENTE</b> · {client.full_name} · {task.title}</span><small>{task.due_date}</small></button>)}
         {inactiveClients.map(client=><button key={`inactive-${client.id}`} onClick={()=>onOpen(client,'workout')} style={inboxRow}><span><b>SEM TREINO RECENTE</b> · {client.full_name}</span><small>ABRIR →</small></button>)}
         {intakeAlerts.map(client=><button key={`intake-${client.id}`} onClick={()=>onOpen(client,'intake')} style={inboxRow}><span><b>FICHA INICIAL RECEBIDA</b> · {client.full_name}</span><small>REVER →</small></button>)}
-        {pendingCheckins.length===0&&openTasks.filter(({task})=>task.due_date&&task.due_date<=new Date().toISOString().slice(0,10)).length===0&&inactiveClients.length===0&&intakeAlerts.length===0&&<div style={emptyToolState}>Não tens assuntos urgentes. Tudo em ordem.</div>}
+        {helpAlerts.map(({client,item})=><button key={`help-${item.id}`} onClick={()=>onOpen(client,'overview')} style={inboxRow}><span><b>PEDIDO DE AJUDA</b> · {client.full_name} · {supportCategory(item.category)}</span><small>RESPONDER →</small></button>)}
+        {pendingCheckins.length===0&&openTasks.filter(({task})=>task.due_date&&task.due_date<=new Date().toISOString().slice(0,10)).length===0&&inactiveClients.length===0&&intakeAlerts.length===0&&helpAlerts.length===0&&<div style={emptyToolState}>Não tens assuntos urgentes. Tudo em ordem.</div>}
       </div></div>
     </>}
   </div>
@@ -445,6 +450,7 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
       </div>
       <div style={{gridColumn:'1/-1'}}><WeightProgressChart client={client} weights={weights}/></div>
       <div style={{gridColumn:'1/-1'}}><CoachWorkspace client={client} session={session}/></div>
+      <div style={{gridColumn:'1/-1'}}><AdminSupportRequests client={client} session={session}/></div>
     </div>}
     {tab==='workout' && <WorkoutManager client={client} session={session} workouts={workouts} onRefresh={load}/>}
     {tab==='nutrition' && <NutritionManager client={client} session={session} plans={nutrition} onRefresh={load}/>}
@@ -453,6 +459,12 @@ function ClientManager({client, session, initialTab='overview', onBack, onClient
     {tab==='supplements' && <SupplementManager client={client} session={session}/>}
     {tab==='intake' && <AdminIntake client={client} session={session}/>}
   </div>
+}
+
+function AdminSupportRequests({client,session}:{client:any,session:Session}){
+  const [items,setItems]=useState<any[]>([]),[replies,setReplies]=useState<Record<number,string>>({})
+  const load=useCallback(async()=>{const rows=await getSupportRequests(session.access_token,client.id);setItems(rows);setReplies(Object.fromEntries(rows.map((x:any)=>[x.id,x.coach_reply||''])))},[session.access_token,client.id]);useEffect(()=>{load().catch(()=>{})},[load])
+  return <div style={card}><div style={cardTitle}>PEDIDOS DE AJUDA</div>{items.length===0?<p style={muted}>Este cliente ainda não enviou pedidos.</p>:<div style={{display:'grid',gap:9}}>{items.map(item=><div key={item.id} style={{...supportAdminCard,borderColor:item.status==='open'?'rgba(212,175,55,.28)':'rgba(76,166,106,.2)'}}><div><b>{supportCategory(item.category)}</b><div style={small}>{formatDate(item.created_at)} · {item.status==='open'?'POR RESPONDER':'RESOLVIDO'}</div><p style={text}>{item.message}</p></div><textarea value={replies[item.id]||''} onChange={e=>setReplies({...replies,[item.id]:e.target.value})} placeholder="Resposta ao cliente…" style={{...inputStyle,minHeight:65}}/><button onClick={async()=>{await updateSupportRequest(session.access_token,item.id,{coach_reply:replies[item.id]||null,status:'resolved',resolved_at:new Date().toISOString()});load()}} disabled={!replies[item.id]?.trim()} style={goldButton}>{item.status==='open'?'RESPONDER E RESOLVER':'ATUALIZAR RESPOSTA'}</button></div>)}</div>}</div>
 }
 
 function CoachWorkspace({client,session}:{client:any,session:Session}){
@@ -828,6 +840,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   const [clientTasks,setClientTasks]=useState<any[]>([])
   const [assessments,setAssessments]=useState<any[]>([]),[supplements,setSupplements]=useState<any[]>([])
   const [clientIntake,setClientIntake]=useState<any>(null)
+  const [supportRequests,setSupportRequests]=useState<any[]>([]),[helpOpen,setHelpOpen]=useState(false)
 
   const loadWorkouts=useCallback(async()=>{
     if(!client?.id) return
@@ -881,6 +894,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   const loadAssessments=useCallback(async()=>{if(client?.id)setAssessments(await getMonthlyAssessments(session.access_token,client.id))},[client?.id,session.access_token])
   const loadSupplements=useCallback(async()=>{if(client?.id)setSupplements(await getSupplements(session.access_token,client.id))},[client?.id,session.access_token])
   const loadIntake=useCallback(async()=>{if(client?.id)setClientIntake(await getClientIntake(session.access_token,client.id))},[client?.id,session.access_token])
+  const loadSupport=useCallback(async()=>{if(client?.id)setSupportRequests(await getSupportRequests(session.access_token,client.id))},[client?.id,session.access_token])
 
   useEffect(()=>{loadWorkouts()},[loadWorkouts])
   useEffect(()=>{loadNutrition()},[loadNutrition])
@@ -888,6 +902,7 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   useEffect(()=>{loadClientTasks()},[loadClientTasks])
   useEffect(()=>{loadAssessments()},[loadAssessments]);useEffect(()=>{loadSupplements()},[loadSupplements])
   useEffect(()=>{loadIntake()},[loadIntake])
+  useEffect(()=>{loadSupport()},[loadSupport])
 
   if(!client) return <div style={{...card,marginTop:28}}><div style={cardTitle}>PERFIL</div><p style={muted}>A tua conta está criada, mas ainda não foi associada a um perfil MASSA+. O administrador terá de configurar os teus dados.</p></div>
 
@@ -902,8 +917,10 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
   const sessionsThisWeek=workoutSessions.filter(item=>new Date(item.completed_at).getTime()>=weekStart).length
   const activeWeeks=trainingWeekStreak(workoutSessions)
   const pendingTasks=clientTasks.filter(item=>!item.is_completed)
+  const activeSupplements=supplements.filter(item=>item.is_active)
 
   return <div style={{display:'grid',gap:18,marginTop:28}}>
+    <div style={todayHero}><div><div style={eyebrow}>O MEU DIA</div><h2 style={{...title,fontSize:34,marginBottom:7}}>{workouts[0]?.name||'Dia de evolução'}</h2><p style={{...muted,margin:0}}>{workouts[0]?'O próximo treino está pronto. Regista as cargas para acompanhares a evolução.':'Consulta o teu plano e mantém as tarefas em dia.'}</p></div><button onClick={()=>setTab('workout')} style={goldButton}>{workouts[0]?'INICIAR TREINO':'VER TREINO'}</button><div style={todayGrid}><button onClick={()=>setTab('nutrition')} style={todayItem}><span>NUTRIÇÃO</span><b>{nutritionPlans[0]?.calories??'—'} kcal</b></button><button onClick={()=>setTab('tasks')} style={todayItem}><span>TAREFAS</span><b>{pendingTasks.length} pendentes</b></button><button onClick={()=>setTab('supplements')} style={todayItem}><span>SUPLEMENTOS</span><b>{activeSupplements.length} ativos</b></button><button onClick={()=>setTab('checkin')} style={todayItem}><span>CHECK-IN</span><b>{checkinDue?'Disponível':formatDate(nextCheckin.toISOString())}</b></button></div></div>
     <div style={clientDashboardGrid}>
       <div style={dashboardMetricCard}><span>PESO ATUAL</span><b>{Number.isFinite(currentWeight)?currentWeight:'—'} <small>kg</small></b><small>Início: {client.initial_weight??'—'} kg</small></div>
       <div style={dashboardMetricCard}><span>OBJETIVO</span><b>{client.goal_weight??'—'} <small>kg</small></b><small>{client.goal||'Objetivo definido pelo treinador'}</small></div>
@@ -990,12 +1007,21 @@ function ClientView({client,weights,session,onProgressUpdated}:{client:any,weigh
     {tab==='assessment'&&<ClientAssessment client={client} session={session} items={assessments} onRefresh={loadAssessments}/>} 
     {tab==='supplements'&&<ClientSupplements items={supplements}/>} 
     {tab==='intake'&&<ClientIntakeForm client={client} session={session} value={clientIntake} onRefresh={loadIntake}/>} 
+    <button className="help-floating" onClick={()=>setHelpOpen(true)} style={helpFloating}>PRECISO DE AJUDA</button>
+    {helpOpen&&<SupportRequestModal client={client} session={session} items={supportRequests} onClose={()=>setHelpOpen(false)} onRefresh={loadSupport}/>} 
+    <nav className="client-mobile-nav">{([['profile','INÍCIO'],['workout','TREINO'],['nutrition','NUTRIÇÃO'],['assessment','PROGRESSO'],['tasks','MAIS']] as const).map(([key,label])=><button key={key} onClick={()=>setTab(key)} className={tab===key?'active':''}>{label}</button>)}</nav>
   </div>
 }
 
 function ClientTasks({tasks,session,onRefresh}:{tasks:any[],session:Session,onRefresh:()=>Promise<void>}){
   const toggle=async(item:any)=>{await updateClientTask(session.access_token,item.id,{is_completed:!item.is_completed,completed_at:item.is_completed?null:new Date().toISOString()});await onRefresh()}
   return <div style={card}><div style={eyebrow}>PLANO DE AÇÃO</div><h2 style={{...title,fontSize:30,marginBottom:7}}>As tuas tarefas</h2><p style={{...muted,marginTop:0}}>Pequenas ações definidas pelo teu treinador para manteres o progresso.</p>{tasks.length===0?<div style={emptyToolState}>Não tens tarefas atribuídas.</div>:<div style={{display:'grid',gap:9,marginTop:18}}>{tasks.map(item=><button key={item.id} onClick={()=>toggle(item)} style={{...clientTaskCard,borderColor:item.is_completed?'rgba(76,166,106,.25)':'rgba(212,175,55,.18)',opacity:item.is_completed?0.65:1}}><span style={{...taskCheck,background:item.is_completed?'#4ca66a':'transparent'}}>{item.is_completed?'✓':''}</span><span style={{flex:1}}><b>{item.title}</b>{item.details&&<small>{item.details}</small>}<small>{item.due_date?`Prazo: ${item.due_date}`:'Sem prazo definido'}</small></span><strong>{item.is_completed?'CONCLUÍDA':'MARCAR'}</strong></button>)}</div>}</div>
+}
+
+function SupportRequestModal({client,session,items,onClose,onRefresh}:{client:any,session:Session,items:any[],onClose:()=>void,onRefresh:()=>Promise<void>}){
+  const [category,setCategory]=useState('nutrition'),[message,setMessage]=useState(''),[saving,setSaving]=useState(false),[notice,setNotice]=useState('')
+  const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setNotice('');try{await createSupportRequest(session.access_token,{client_id:client.id,category,message:message.trim()});setMessage('');setNotice('Pedido enviado ao treinador.');await onRefresh()}catch(e:any){setNotice(e.message)}finally{setSaving(false)}}
+  return <div style={modalBackdrop}><div style={modal}><div style={{display:'flex',justifyContent:'space-between',gap:12}}><div><div style={eyebrow}>APOIO</div><h2 style={{...title,fontSize:30}}>Preciso de ajuda</h2></div><button onClick={onClose} style={closeButton}>×</button></div><form onSubmit={submit} style={{display:'grid',gap:10}}><select value={category} onChange={e=>setCategory(e.target.value)} style={inputStyle}><option value="nutrition">Dificuldade com uma refeição</option><option value="exercise">Exercício ou desconforto</option><option value="schedule">Alteração de horário</option><option value="adherence">Dificuldade em cumprir o plano</option><option value="contact">Quero falar com o treinador</option><option value="other">Outro assunto</option></select><textarea value={message} onChange={e=>setMessage(e.target.value)} required placeholder="Explica brevemente o que se passa…" style={{...inputStyle,minHeight:100}}/><button disabled={saving} style={goldButton}>{saving?'A ENVIAR…':'ENVIAR PEDIDO'}</button>{notice&&<div style={notice.includes('enviado')?successStyle:errorStyle}>{notice}</div>}</form><div style={{marginTop:20}}><div style={cardTitle}>PEDIDOS ANTERIORES</div>{items.slice(0,4).map(item=><div key={item.id} style={clientCheckinCard}><b>{supportCategory(item.category)}</b><div style={small}>{formatDate(item.created_at)} · {item.status==='open'?'A aguardar resposta':'Resolvido'}</div>{item.coach_reply&&<div style={coachReply}>{item.coach_reply}</div>}</div>)}</div></div></div>
 }
 
 function ClientIntakeForm({client,session,value,onRefresh}:{client:any,session:Session,value:any,onRefresh:()=>Promise<void>}){
@@ -1371,6 +1397,11 @@ const supplementCard:any={display:'flex',alignItems:'flex-start',gap:13,border:'
 const supplementIcon:any={width:34,height:34,borderRadius:'50%',background:GOLD,color:'#090909',display:'grid',placeItems:'center',fontWeight:900,flex:'0 0 auto'}
 const intakeGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:8}
 const intakeField:any={border:'1px solid rgba(255,255,255,.08)',borderRadius:8,background:'rgba(0,0,0,.18)',padding:'11px 12px',display:'grid',gap:5,fontFamily:"'Inter',sans-serif",fontSize:11,color:'rgba(255,255,255,.45)'}
+const todayHero:any={...card,background:'linear-gradient(135deg,rgba(212,175,55,.13),rgba(255,255,255,.035) 45%,rgba(0,0,0,.2))',borderColor:'rgba(212,175,55,.24)',display:'grid',gridTemplateColumns:'1fr auto',gap:18,alignItems:'center'}
+const todayGrid:any={gridColumn:'1/-1',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:7}
+const todayItem:any={border:'1px solid rgba(255,255,255,.09)',borderRadius:8,background:'rgba(0,0,0,.2)',padding:'11px 12px',color:WHITE,textAlign:'left',display:'grid',gap:5,fontFamily:"'League Spartan',sans-serif",fontSize:9,cursor:'pointer'}
+const helpFloating:any={position:'fixed',right:22,bottom:22,zIndex:120,background:'linear-gradient(135deg,#E2C45A,#C89E28)',border:'1px solid rgba(255,226,128,.5)',borderRadius:999,color:'#090909',padding:'13px 18px',fontFamily:"'League Spartan',sans-serif",fontSize:10,fontWeight:900,letterSpacing:'.1em',cursor:'pointer',boxShadow:'0 12px 34px rgba(0,0,0,.4)'}
+const supportAdminCard:any={border:'1px solid rgba(255,255,255,.09)',borderRadius:9,background:'rgba(0,0,0,.18)',padding:14,display:'grid',gap:8}
 const controlGrid:any={display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:10}
 const controlCard:any={background:'linear-gradient(145deg,rgba(255,255,255,.035),rgba(0,0,0,.16))',border:'1px solid rgba(255,255,255,.08)',padding:18,textAlign:'left',color:WHITE,cursor:'pointer',display:'grid',gap:5,fontFamily:"'Inter',sans-serif"}
 const controlLabel:any={fontFamily:"'League Spartan',sans-serif",fontSize:10,letterSpacing:'.15em',color:GOLD}
