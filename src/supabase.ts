@@ -167,6 +167,14 @@ export async function createWorkout(token: string, data: any) {
 export async function deleteWorkout(token: string, id: number) {
   await request(`/rest/v1/workout_plans?id=eq.${id}`, {method:'DELETE'}, token)
 }
+export async function updateWorkout(token: string, id: number, data: Record<string, any>) {
+  const rows = await request(`/rest/v1/workout_plans?id=eq.${id}`, {
+    method:'PATCH',
+    headers:{Prefer:'return=representation'},
+    body:JSON.stringify(data),
+  }, token)
+  return rows?.[0] ?? null
+}
 export async function createExercise(token: string, data: any) {
   const rows = await request('/rest/v1/exercises', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
   return rows?.[0] ?? null
