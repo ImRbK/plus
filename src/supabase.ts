@@ -198,6 +198,31 @@ export async function createExerciseLogs(token: string, data: any[]) {
   return await request('/rest/v1/exercise_logs', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
 }
 
+export async function getCoachNotes(token: string, clientId: string) {
+  return await request(`/rest/v1/coach_notes?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.desc`, {method:'GET'}, token)
+}
+export async function createCoachNote(token: string, data: any) {
+  const rows=await request('/rest/v1/coach_notes', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0]??null
+}
+export async function deleteCoachNote(token: string, id: number) {
+  await request(`/rest/v1/coach_notes?id=eq.${id}`, {method:'DELETE'}, token)
+}
+export async function getClientTasks(token: string, clientId: string) {
+  return await request(`/rest/v1/client_tasks?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=is_completed.asc,due_date.asc.nullslast,created_at.desc`, {method:'GET'}, token)
+}
+export async function createClientTask(token: string, data: any) {
+  const rows=await request('/rest/v1/client_tasks', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0]??null
+}
+export async function updateClientTask(token: string, id: number, data: Record<string,any>) {
+  const rows=await request(`/rest/v1/client_tasks?id=eq.${id}`, {method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
+  return rows?.[0]??null
+}
+export async function deleteClientTask(token: string, id: number) {
+  await request(`/rest/v1/client_tasks?id=eq.${id}`, {method:'DELETE'}, token)
+}
+
 export async function getNutritionPlans(token: string, clientId: string) {
   return await request(`/rest/v1/nutrition_plans?client_id=eq.${encodeURIComponent(clientId)}&select=*&order=created_at.asc`, {method:'GET'}, token)
 }
