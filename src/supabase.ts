@@ -179,6 +179,11 @@ export async function createWorkout(token: string, data: any) {
   const rows = await request('/rest/v1/workout_plans', {method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
   return rows?.[0] ?? null
 }
+export async function saveGeneratedWorkouts(token: string, clientId: string, requestId: string, plan: unknown): Promise<{duplicate:boolean;workout_ids:unknown[]}> {
+  return await request('/rest/v1/rpc/save_generated_workouts', {
+    method:'POST', body:JSON.stringify({p_client_id:clientId,p_request_id:requestId,p_plan:plan}),
+  }, token)
+}
 export async function deleteWorkout(token: string, id: number) {
   await request(`/rest/v1/workout_plans?id=eq.${id}`, {method:'DELETE'}, token)
 }
@@ -196,6 +201,9 @@ export async function createExercise(token: string, data: any) {
 }
 export async function deleteExercise(token: string, id: number) {
   await request(`/rest/v1/exercises?id=eq.${id}`, {method:'DELETE'}, token)
+}
+export async function updateExercise(token: string, id: number, data: Record<string,unknown>) {
+  return await request(`/rest/v1/exercises?id=eq.${id}`, {method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(data)}, token)
 }
 
 export async function getWorkoutSessions(token: string, clientId: string, workoutId?: number) {

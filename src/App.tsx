@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { AutomaticWorkout } from './AutomaticWorkout'
 import {
   P01_Cover, P02_Copyright, P03_AboutAuthor, P04_TOC,
   P05_ChapterDivider, P06_MuscleGrowth, P07_Calories, P08_Macros,
@@ -17,7 +18,7 @@ import {
   P41_FatLossMacros, P42_CuttingMealPlan, P43_TrainingAndCardio,
   P44_Plateaus, P45_FatLossPlan,
 } from './ebook/lossPages'
-import { getSession, setSession, signIn, signOut, refreshSession, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getCoachNotes, createCoachNote, deleteCoachNote, getClientTasks, createClientTask, updateClientTask, deleteClientTask, getMonthlyAssessments, createMonthlyAssessment, updateMonthlyAssessment, deleteMonthlyAssessment, uploadAssessmentPhoto, getSupplements, createSupplement, updateSupplement, deleteSupplement, getClientIntake, saveClientIntake, reviewClientIntake, getSupportRequests, createSupportRequest, updateSupportRequest, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
+import { getSession, setSession, signIn, signOut, refreshSession, isAdmin, getOwnClient, getAllClients, getWeightProgress, createClientViaFunction, deleteClientProfile, updateClientProfile, uploadBeforePhoto, getClientWorkouts, getWorkoutExercises, createWorkout, updateWorkout, deleteWorkout, createExercise, updateExercise, deleteExercise, getWorkoutSessions, createWorkoutSession, createExerciseLogs, getCoachNotes, createCoachNote, deleteCoachNote, getClientTasks, createClientTask, updateClientTask, deleteClientTask, getMonthlyAssessments, createMonthlyAssessment, updateMonthlyAssessment, deleteMonthlyAssessment, uploadAssessmentPhoto, getSupplements, createSupplement, updateSupplement, deleteSupplement, getClientIntake, saveClientIntake, reviewClientIntake, getSupportRequests, createSupportRequest, updateSupportRequest, getNutritionPlans, getMeals, createNutritionPlan, deleteNutritionPlan, createMeal, deleteMeal, addWeightProgress, deleteWeightProgress, getCheckIns, createCheckIn, deleteCheckIn, updateCheckIn, type Session } from './supabase'
 
 const PAGES = [
   { component: P01_Cover, title: 'Capa' }, { component: P02_Copyright, title: 'Direitos de Autor' },
@@ -569,6 +570,7 @@ function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:
       <div><div style={eyebrow}>PROGRAMAÇÃO DE TREINO</div><h3 style={{...title,fontSize:30,marginBottom:8}}>Treinos de {client.full_name?.split(' ')[0]||'cliente'}</h3><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><span style={adminInfoPill}>PESO <b>{client.current_weight??'—'} kg</b></span><span style={adminInfoPill}>OBJETIVO <b>{client.goal_weight??'—'} kg</b></span><span style={adminInfoPill}>TREINOS <b>{workouts.length}</b></span></div></div>
       <button onClick={()=>{setFormOpen(v=>!v);setMessage('')}} style={goldButton}>{formOpen?'FECHAR':'＋ NOVO TREINO'}</button>
     </div>
+    <AutomaticWorkout key={client.id} clientId={client.id} session={session} existingCount={workouts.length} onSaved={onRefresh}/>
 
     {message&&<div style={message.includes('sucesso')?successStyle:errorStyle}>{message}</div>}
 
@@ -604,21 +606,24 @@ function WorkoutManager({client,session,workouts,onRefresh}:{client:any,session:
 
 function ExerciseEditor({session,workout,exercises,onRefresh}:{session:Session,workout:any,exercises:any[],onRefresh:()=>void}) {
   const [name,setName]=useState(''),[sets,setSets]=useState(''),[reps,setReps]=useState(''),[rest,setRest]=useState(''),[notes,setNotes]=useState('')
+  const [editingExercise,setEditingExercise]=useState<any>(null)
+  const clearExercise=()=>{setEditingExercise(null);setName('');setSets('');setReps('');setRest('');setNotes('')}
   const [formOpen,setFormOpen]=useState(exercises.length===0),[saving,setSaving]=useState(false),[error,setError]=useState('')
-  const add=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setError('');try{await createExercise(session.access_token,{workout_id:workout.id,name:name.trim(),sets:sets?Number(sets):null,reps:reps||null,rest_seconds:rest?Number(rest):null,notes:notes.trim()||null,exercise_order:exercises.length});setName('');setSets('');setReps('');setRest('');setNotes('');setFormOpen(false);onRefresh()}catch(e:any){setError(e.message||'Não foi possível adicionar o exercício.')}finally{setSaving(false)}}
+  const add=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setError('');try{const data={name:name.trim(),sets:sets?Number(sets):null,reps:reps||null,rest_seconds:rest?Number(rest):null,notes:notes.trim()||null};if(editingExercise)await updateExercise(session.access_token,editingExercise.id,data);else await createExercise(session.access_token,{...data,workout_id:workout.id,exercise_order:exercises.length});clearExercise();setFormOpen(false);onRefresh()}catch(e:any){setError(e.message||'Não foi possível adicionar o exercício.')}finally{setSaving(false)}}
   const remove=async(exercise:any)=>{if(!window.confirm(`Eliminar o exercício “${exercise.name}”?`))return;try{await deleteExercise(session.access_token,exercise.id);onRefresh()}catch(e:any){setError(e.message||'Não foi possível eliminar o exercício.')}}
-  const duplicate=(exercise:any)=>{setName(`${exercise.name} — variação`);setSets(exercise.sets?.toString()||'');setReps(exercise.reps||'');setRest(exercise.rest_seconds?.toString()||'');setNotes(exercise.notes||'');setFormOpen(true)}
+  const duplicate=(exercise:any)=>{setEditingExercise(null);setName(`${exercise.name} — variação`);setSets(exercise.sets?.toString()||'');setReps(exercise.reps||'');setRest(exercise.rest_seconds?.toString()||'');setNotes(exercise.notes||'');setFormOpen(true)}
+  const editExercise=(exercise:any)=>{setEditingExercise(exercise);setName(exercise.name);setSets(exercise.sets?.toString()||'');setReps(exercise.reps||'');setRest(exercise.rest_seconds?.toString()||'');setNotes(exercise.notes||'');setFormOpen(true);setError('')}
   return <div>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}><div><div style={cardTitle}>EXERCÍCIOS</div><p style={{...muted,margin:'-9px 0 0'}}>{exercises.length} exercício{exercises.length===1?'':'s'} · {exercises.reduce((sum,item)=>sum+(Number(item.sets)||0),0)} séries no total</p></div><button onClick={()=>setFormOpen(v=>!v)} style={ghostButton}>{formOpen?'FECHAR':'＋ ADICIONAR EXERCÍCIO'}</button></div>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,marginBottom:14}}><div><div style={cardTitle}>EXERCÍCIOS</div><p style={{...muted,margin:'-9px 0 0'}}>{exercises.length} exercício{exercises.length===1?'':'s'} · {exercises.reduce((sum,item)=>sum+(Number(item.sets)||0),0)} séries no total</p></div><button disabled={saving} onClick={()=>{clearExercise();setFormOpen(v=>!v)}} style={ghostButton}>{formOpen?'FECHAR':'＋ ADICIONAR EXERCÍCIO'}</button></div>
     {error&&<div style={{...errorStyle,marginBottom:12}}>{error}</div>}
     {exercises.length===0&&!formOpen&&<p style={muted}>Ainda não existem exercícios neste treino.</p>}
     <div style={{display:'grid',gap:9}}>{exercises.map((exercise,index)=><div key={exercise.id} style={adminExerciseCard}>
       <div style={exerciseOrder}>{String(index+1).padStart(2,'0')}</div>
       <div style={{flex:1,minWidth:0}}><strong style={{fontFamily:"'League Spartan',sans-serif",fontSize:16}}>{exercise.name}</strong><div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:9}}><span style={exerciseMetric}><b>{exercise.sets??'—'}</b> SÉRIES</span><span style={exerciseMetric}><b>{exercise.reps??'—'}</b> REPS</span><span style={exerciseMetric}><b>{exercise.rest_seconds??'—'}s</b> DESCANSO</span></div>{exercise.notes&&<p style={{...muted,margin:'10px 0 0'}}>{exercise.notes}</p>}</div>
-      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button onClick={()=>duplicate(exercise)} style={ghostButton}>DUPLICAR</button><button onClick={()=>remove(exercise)} style={dangerButton}>ELIMINAR</button></div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}><button disabled={saving} onClick={()=>editExercise(exercise)} style={ghostButton}>EDITAR</button><button disabled={saving} onClick={()=>duplicate(exercise)} style={ghostButton}>DUPLICAR</button><button disabled={saving} onClick={()=>remove(exercise)} style={dangerButton}>ELIMINAR</button></div>
     </div>)}</div>
     {formOpen&&<form onSubmit={add} style={{display:'grid',gap:9,marginTop:16,padding:18,border:'1px solid rgba(212,175,55,.2)',background:'rgba(212,175,55,.035)'}}>
-      <div style={cardTitle}>NOVO EXERCÍCIO</div>
+      <div style={cardTitle}>{editingExercise?'EDITAR EXERCÍCIO':'NOVO EXERCÍCIO'}</div>
       <label style={labelStyle}>NOME<input value={name} onChange={e=>setName(e.target.value)} placeholder="Ex.: Supino inclinado com halteres" required style={{...inputStyle,width:'100%',marginTop:6}}/></label>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8}}><label style={labelStyle}>SÉRIES<input value={sets} onChange={e=>setSets(e.target.value)} placeholder="4" type="number" min="1" style={{...inputStyle,width:'100%',marginTop:6}}/></label><label style={labelStyle}>REPETIÇÕES<input value={reps} onChange={e=>setReps(e.target.value)} placeholder="8–12" style={{...inputStyle,width:'100%',marginTop:6}}/></label><label style={labelStyle}>DESCANSO (S)<input value={rest} onChange={e=>setRest(e.target.value)} placeholder="90" type="number" min="0" style={{...inputStyle,width:'100%',marginTop:6}}/></label></div>
       <label style={labelStyle}>NOTAS TÉCNICAS<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Execução, intensidade, cadência ou alternativas…" style={{...inputStyle,width:'100%',minHeight:78,resize:'vertical',marginTop:6}}/></label>
